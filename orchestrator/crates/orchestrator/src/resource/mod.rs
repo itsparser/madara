@@ -4,7 +4,7 @@ pub mod setup;
 use crate::core::cloud::CloudProvider;
 use crate::error::OrchestratorResult;
 use async_trait::async_trait;
-use mockall::automock;
+use std::sync::Arc;
 
 /// Resource trait
 ///
@@ -24,7 +24,7 @@ pub trait Resource: Send + Sync {
     type SetupArgs: Send + Sync;
     type CheckArgs: Send + Sync;
 
-    async fn new(provider: CloudProvider) -> OrchestratorResult<Self>
+    async fn new(provider: Arc<CloudProvider>) -> OrchestratorResult<Self>
     where
         Self: Sized;
 

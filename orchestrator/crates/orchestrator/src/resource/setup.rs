@@ -6,18 +6,23 @@ use crate::resource::Resource;
 use async_trait::async_trait;
 use std::any::Any;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum ResourceType {
-    S3,
-    SQS,
+    Queue,
+    Storage,
+    Cron,
+    Notification,
 }
 
 impl ResourceType {
     pub fn from_str(resource_type: &str) -> Option<Self> {
         match resource_type.to_lowercase().as_str() {
-            "s3" => Some(ResourceType::S3),
-            "sqs" => Some(ResourceType::SQS),
+            "queue" => Some(ResourceType::Queue),
+            "storage" => Some(ResourceType::Storage),
+            "cron" => Some(ResourceType::Cron),
+            "notification" => Some(ResourceType::Notification),
             _ => None,
         }
     }
@@ -27,14 +32,15 @@ impl ResourceType {
 pub struct ResourceWrapper {
     resource: Box<dyn Any + Send + Sync>,
     resource_type: ResourceType,
+    cloud_provider: Arc<CloudProvider>,
 }
 
 impl ResourceWrapper {
-    pub fn new<R>(resource: R, resource_type: ResourceType) -> Self
+    pub fn new<R>(cloud_provider: Arc<CloudProvider>, resource: R, resource_type: ResourceType) -> Self
     where
         R: Any + Send + Sync,
     {
-        ResourceWrapper { resource: Box::new(resource), resource_type }
+        ResourceWrapper { cloud_provider, resource: Box::new(resource), resource_type }
     }
 
     pub fn get_type(&self) -> &ResourceType {
@@ -53,7 +59,7 @@ impl ResourceWrapper {
 /// A trait for resource creation strategies to enable flexible resource instantiation
 #[async_trait]
 pub trait ResourceCreator: Send + Sync {
-    async fn create_resource(&self, cloud_provider: CloudProvider) -> OrchestratorResult<ResourceWrapper>;
+    async fn create_resource(&self, cloud_provider: Arc<CloudProvider>) -> OrchestratorResult<ResourceWrapper>;
 }
 
 // S3 resource creator
@@ -61,9 +67,9 @@ pub struct S3ResourceCreator;
 
 #[async_trait]
 impl ResourceCreator for S3ResourceCreator {
-    async fn create_resource(&self, cloud_provider: CloudProvider) -> OrchestratorResult<ResourceWrapper> {
+    async fn create_resource(&self, cloud_provider: Arc<CloudProvider>) -> OrchestratorResult<ResourceWrapper> {
         let s3 = SSS::new(cloud_provider).await?;
-        Ok(ResourceWrapper::new(s3, ResourceType::S3))
+        Ok(ResourceWrapper::new(cloud_provider, s3, ResourceType::Storage))
     }
 }
 
@@ -72,25 +78,34 @@ pub struct SQSResourceCreator;
 
 #[async_trait]
 impl ResourceCreator for SQSResourceCreator {
-    async fn create_resource(&self, cloud_provider: CloudProvider) -> OrchestratorResult<ResourceWrapper> {
+    async fn create_resource(&self, cloud_provider: Arc<CloudProvider>) -> OrchestratorResult<ResourceWrapper> {
         let sqs = SQS::new(cloud_provider).await?;
-        Ok(ResourceWrapper::new(sqs, ResourceType::SQS))
+        Ok(ResourceWrapper::new(cloud_provider, sqs, ResourceType::Queue))
     }
 }
 
 /// ResourceFactory is responsible for creating resources based on their type
 pub struct ResourceFactory {
     creators: HashMap<ResourceType, Box<dyn ResourceCreator>>,
+    cloud_provider: Arc<CloudProvider>,
 }
 
 impl ResourceFactory {
-    /// Create a new ResourceFactory with default resource creators
-    pub fn new() -> Self {
+    /// new_with_gcs - Create a new ResourceFactory with default resource creators for Orchestrator
+    /// with GCS Cloud Provider
+    pub fn new_with_gcs(cloud_provider: Arc<CloudProvider>) -> Self {
         let mut creators = HashMap::new();
-        creators.insert(ResourceType::S3, Box::new(S3ResourceCreator) as Box<dyn ResourceCreator>);
-        creators.insert(ResourceType::SQS, Box::new(SQSResourceCreator) as Box<dyn ResourceCreator>);
+        ResourceFactory { creators, cloud_provider }
+    }
 
-        ResourceFactory { creators }
+    /// new_with_aws - Create a new ResourceFactory with default resource creators for Orchestrator
+    /// with AWS Cloud Provider
+    pub fn new_with_aws(cloud_provider: Arc<CloudProvider>) -> Self {
+        let mut creators = HashMap::new();
+        creators.insert(ResourceType::Storage, Box::new(S3ResourceCreator) as Box<dyn ResourceCreator>);
+        creators.insert(ResourceType::Queue, Box::new(SQSResourceCreator) as Box<dyn ResourceCreator>);
+
+        ResourceFactory { creators, cloud_provider }
     }
 
     /// Register a new resource creator
@@ -102,7 +117,7 @@ impl ResourceFactory {
     pub async fn create_resource(
         &self,
         resource_type: ResourceType,
-        cloud_provider: CloudProvider,
+        cloud_provider: Arc<CloudProvider>,
     ) -> OrchestratorResult<ResourceWrapper> {
         match self.creators.get(&resource_type) {
             Some(creator) => creator.create_resource(cloud_provider).await,
@@ -117,7 +132,7 @@ impl ResourceFactory {
     pub async fn create_resource_from_str(
         &self,
         resource_type: &str,
-        cloud_provider: CloudProvider,
+        cloud_provider: Arc<CloudProvider>,
     ) -> OrchestratorResult<ResourceWrapper> {
         match ResourceType::from_str(resource_type) {
             Some(rt) => self.create_resource(rt, cloud_provider).await,
@@ -127,20 +142,14 @@ impl ResourceFactory {
 }
 
 /// Setup function that initializes all necessary resources
-pub async fn setup(resources: Vec<(&str, CloudProvider)>) -> OrchestratorResult<Vec<ResourceWrapper>> {
-    let factory = ResourceFactory::new();
+pub async fn setup(cloud_provider: Arc<CloudProvider>) -> OrchestratorResult<Vec<ResourceWrapper>> {
+    // let factory = ResourceFactory::new();
     let mut setup_resources = Vec::new();
 
-    for (resource_type, cloud_provider) in resources {
-        let resource = factory.create_resource_from_str(resource_type, cloud_provider).await?;
-        setup_resources.push(resource);
-    }
+    let resources = match cloud_provider.clone() {
+        CloudProvider::AWS(_) => ResourceFactory::new_with_aws(cloud_provider),
+        (a) => Err(OrchestratorError::InvalidCloudProviderError(a.to_string()))?,
+    };
 
     Ok(setup_resources)
-}
-
-/// Set up a single resource
-pub async fn setup_resource(resource_type: &str, cloud_provider: CloudProvider) -> OrchestratorResult<ResourceWrapper> {
-    let factory = ResourceFactory::new();
-    factory.create_resource_from_str(resource_type, cloud_provider).await
 }

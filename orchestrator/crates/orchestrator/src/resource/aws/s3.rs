@@ -4,6 +4,7 @@ use crate::resource::Resource;
 use async_trait::async_trait;
 use aws_sdk_s3::types::{BucketLocationConstraint, CreateBucketConfiguration};
 use aws_sdk_s3::{Client as S3Client, Client, Error as S3Error};
+use std::sync::Arc;
 
 #[derive(Clone, Debug)]
 pub struct SSS {
@@ -102,15 +103,15 @@ impl Resource for SSS {
     type SetupArgs = S3BucketSetupArgs;
     type CheckArgs = String; // Bucket name
 
-    async fn new(cloud_provider: CloudProvider) -> OrchestratorResult<Self> {
+    async fn new(cloud_provider: Arc<CloudProvider>) -> OrchestratorResult<Self> {
         match cloud_provider {
             CloudProvider::AWS(aws_config) => {
                 let client = S3Client::new(&aws_config);
                 Ok(Self { client, region: None, bucket_name: None })
             }
-            _ => Err(OrchestratorError::InvalidCloudProviderError(format!(
-                "Mismatch Cloud Provider for S3Bucket resource"
-            ))),
+            _ => Err(OrchestratorError::InvalidCloudProviderError(
+                "Mismatch Cloud Provider for S3Bucket resource".to_string(),
+            )),
         }
     }
     /// Setup a new S3 bucket

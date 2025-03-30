@@ -1,6 +1,10 @@
 use crate::args::provider::{AWSConfigValidatedArgs, ProviderValidatedArgs};
+use crate::args::queue::QueueValidatedArgs;
 use crate::args::SetupCmd;
 use crate::core::cloud::CloudProvider;
+use crate::resource::aws::s3::SSS;
+use crate::resource::aws::sqs::SQS;
+use crate::resource::Resource;
 use crate::{OrchestratorError, OrchestratorResult};
 use aws_config::meta::region::RegionProviderChain;
 use aws_config::{Region, SdkConfig};
@@ -45,11 +49,23 @@ pub async fn build_provider_config(provider_params: &ProviderValidatedArgs) -> A
 async fn setup_cloud(setup_cmd: &SetupCmd) -> OrchestratorResult<()> {
     info!(" 🌎 Initializing Setup Cloud");
     let provider = setup_cmd.validate_provider_params().map_err(|e| OrchestratorError::SetupCommandError(e))?;
-    let config = build_provider_config(&provider).await;
-    let aws_config = config.get_aws_client_or_panic();
-    debug!("Cloud provider setup completed, Provider: {}", config);
+    let cloud_provider = build_provider_config(&provider).await;
+    let aws_config = cloud_provider.get_aws_client_or_panic();
+    debug!("Cloud provider setup completed, Provider: {}", cloud_provider);
 
     info!("Starting setup of the Resource");
+    let queue_params = setup_cmd.validate_queue_params().map_err(|e| OrchestratorError::SetupCommandError(e))?;
+    match queue_params {
+        QueueValidatedArgs::AWSSQS(aws_sqs_params) => {}
+    }
+
+    let resource: Vec<Box<dyn Resource>> =
+        vec![Box::new(SQS::new(cloud_provider.clone()).await?), Box::new(SSS::new(cloud_provider.clone()).await?)];
+    for resource in resource {
+        resource
+            .setup(setup_cmd.validate_provider_params().map_err(|e| OrchestratorError::SetupCommandError(e))?)
+            .await?;
+    }
 
     Ok(())
 }

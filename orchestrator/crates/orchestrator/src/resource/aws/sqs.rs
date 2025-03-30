@@ -38,7 +38,7 @@ impl Resource for SQS {
 
     type CheckArgs = ();
 
-    async fn new(cloud_provider: CloudProvider) -> OrchestratorResult<Self> {
+    async fn new(cloud_provider: Arc<CloudProvider>) -> OrchestratorResult<Self> {
         match cloud_provider {
             CloudProvider::AWS(aws_config) => {
                 let client = Client::new(&aws_config);
