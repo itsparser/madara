@@ -13,19 +13,19 @@ path = "src/main.rs"
 
 [dependencies]
 alloy = { version = "0.2.1", features = [
-  "full",
-  "node-bindings",
-  "rpc-types-debug",
-  "rpc-types-trace",
-  "json-rpc",
-  "rpc-client",
+    "full",
+    "node-bindings",
+    "rpc-types-debug",
+    "rpc-types-trace",
+    "json-rpc",
+    "rpc-client",
 ] }
 assert_matches = { workspace = true }
 async-std = { workspace = true }
 async-trait = { workspace = true }
 aws-config = { workspace = true, features = ["behavior-version-latest"] }
 aws-credential-types = { workspace = true, features = [
-  "hardcoded-credentials",
+    "hardcoded-credentials",
 ] }
 aws-sdk-eventbridge.workspace = true
 aws-sdk-s3 = { workspace = true, features = ["behavior-version-latest"] }
@@ -41,6 +41,7 @@ chrono = { workspace = true }
 clap = { workspace = true }
 color-eyre = { workspace = true }
 dotenvy = { workspace = true }
+envy = "0.4"
 futures = { workspace = true }
 hex = { workspace = true }
 itertools = { workspace = true }
@@ -88,9 +89,9 @@ aws-sdk-scheduler = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics", "logs"] }
 opentelemetry-appender-tracing = { workspace = true, default-features = false }
 opentelemetry-otlp = { workspace = true, features = [
-  "tonic",
-  "metrics",
-  "logs",
+    "tonic",
+    "metrics",
+    "logs",
 ] }
 opentelemetry-semantic-conventions = { workspace = true }
 opentelemetry-stdout = { workspace = true }
@@ -98,7 +99,7 @@ opentelemetry_sdk = { workspace = true, features = ["rt-tokio", "logs"] }
 tracing = { workspace = true }
 tracing-core = { workspace = true, default-features = false }
 tracing-opentelemetry = { workspace = true }
-tracing-subscriber = { workspace = true, features = ["env-filter"] }
+tracing-subscriber = { workspace = true, features = ["env-filter", "fmt", "json", "time", "default", "env-filter", "fmt"] }
 
 jemallocator = "0.5.4"
 

@@ -21,21 +21,37 @@ pub mod setup;
 /// Contains all the utils that are used by the service
 pub mod utils;
 
-use crate::args::Cli;
+use crate::args::{Cli, Commands, RunCmd, SetupCmd};
+use crate::error::OrchestratorResult;
+use crate::setup::setup;
+use crate::utils::logging::init_logging;
 use clap::Parser as _;
 use dotenvy::dotenv;
-use orchestrator::utils::logging::init_logging;
 
 #[global_allocator]
 static A: jemallocator::Jemalloc = jemallocator::Jemalloc;
 
-/// Start the server
 #[tokio::main]
-#[allow(clippy::needless_return)]
 async fn main() {
     dotenv().ok();
-    let cli = Cli::parse();
-    init_logging().expect("Failed to initialize logging");
-    color_eyre::install().expect("Unable to install color_eyre");
+    // let cli = Cli::parse();
+    init_logging();
     tracing::info!("Starting orchestrator");
+
+    // match &cli.command {
+    //     Commands::Run { run_command } => {
+    //         run_orchestrator(run_command).await.expect("Failed to run orchestrator");
+    //     }
+    //     Commands::Setup { setup_command } => {
+    //         setup_orchestrator(setup_command).await.expect("Failed to setup orchestrator");
+    //     }
+    // }
+}
+
+async fn run_orchestrator(run_cmd: &RunCmd) -> OrchestratorResult<()> {
+    Ok(())
+}
+async fn setup_orchestrator(setup_cmd: &SetupCmd) -> OrchestratorResult<()> {
+    setup(setup_cmd)?;
+    Ok(())
 }

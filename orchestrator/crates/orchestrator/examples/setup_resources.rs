@@ -5,6 +5,7 @@ use orchestrator::error::OrchestratorResult;
 use orchestrator::resource::aws::s3::{S3BucketSetupArgs, SSS};
 use orchestrator::resource::aws::sqs::{SQSSetupArgs, SQS};
 use orchestrator::resource::Resource;
+use orchestrator::utils::env::Env;
 
 /// CLI arguments for resource setup
 #[derive(Parser, Debug)]
@@ -37,40 +38,40 @@ struct Args {
 
 #[tokio::main]
 async fn main() -> OrchestratorResult<()> {
-    // Parse CLI arguments
-    let args = Args::parse();
+    // Load environment variables
+    let env = Env::load()?;
 
     // Load AWS configuration with explicit region
-    let config = aws_config::from_env().region(Region::new(args.region.clone())).load().await;
+    let config = aws_config::from_env().region(Region::new(env.aws_region.clone())).load().await;
 
     let cloud_provider = CloudProvider::AWS(Box::new(config));
 
-    println!("Using prefix: {}", args.prefix);
-    println!("Using AWS region: {}", args.region);
+    println!("Using prefix: {}", env.prefix);
+    println!("Using AWS region: {}", env.aws_region);
 
     // Set up S3 bucket
-    setup_s3_bucket(&cloud_provider, &args).await?;
+    setup_s3_bucket(&cloud_provider, &env).await?;
 
     // Set up SQS queues
-    setup_sqs_queue(&cloud_provider, "notifications", &args).await?;
-    setup_sqs_queue(&cloud_provider, "jobs", &args).await?;
+    setup_sqs_queue(&cloud_provider, "notifications", &env).await?;
+    setup_sqs_queue(&cloud_provider, "jobs", &env).await?;
 
     println!("All resources have been set up successfully!");
     Ok(())
 }
 
-async fn setup_s3_bucket(cloud_provider: &CloudProvider, args: &Args) -> OrchestratorResult<()> {
+async fn setup_s3_bucket(cloud_provider: &CloudProvider, env: &Env) -> OrchestratorResult<()> {
     println!("Setting up S3 bucket...");
 
     // Create S3 resource
     let s3 = SSS::new(cloud_provider.clone()).await?;
 
     // Create the full bucket name with prefix
-    let bucket_name = format!("{}-{}", args.prefix, args.bucket_name);
+    let bucket_name = format!("{}-{}", env.prefix, env.s3_bucket_name);
     println!("Creating bucket: {}", bucket_name);
 
     // Create setup args
-    let setup_args = S3BucketSetupArgs { bucket_name, bucket_location_constraint: args.region.clone() };
+    let setup_args = S3BucketSetupArgs { bucket_name, bucket_location_constraint: env.aws_region.clone() };
 
     // Set up the bucket
     match s3.setup(setup_args).await {
@@ -89,18 +90,18 @@ async fn setup_s3_bucket(cloud_provider: &CloudProvider, args: &Args) -> Orchest
     }
 }
 
-async fn setup_sqs_queue(cloud_provider: &CloudProvider, base_name: &str, args: &Args) -> OrchestratorResult<()> {
+async fn setup_sqs_queue(cloud_provider: &CloudProvider, base_name: &str, env: &Env) -> OrchestratorResult<()> {
     println!("Setting up SQS queue for {}...", base_name);
 
     // Create SQS resource
     let sqs = SQS::new(cloud_provider.clone()).await?;
 
     // Create the full queue name with prefix and suffix
-    let queue_name = format!("{}-{}-{}", args.prefix, base_name, args.queue_suffix);
+    let queue_name = format!("{}-{}-{}", env.prefix, base_name, env.sqs_suffix);
     println!("Creating queue: {}", queue_name);
 
     // Get a full queue URL
-    let queue_url = SQS::get_queue_url(&args.sqs_base_url, &queue_name);
+    let queue_url = SQS::get_queue_url(&env.sqs_base_url, &queue_name);
     println!("Queue URL will be: {}", queue_url);
 
     // Create setup args

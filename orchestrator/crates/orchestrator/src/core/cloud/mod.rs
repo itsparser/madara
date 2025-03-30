@@ -21,4 +21,31 @@ impl CloudProvider {
             Self::AWS(config) => Ok(config),
         }
     }
+    pub fn get_aws_client_or_panic(&self) -> &SdkConfig {
+        match self {
+            CloudProvider::AWS(config) => config.as_ref(),
+        }
+    }
+
+    pub fn get_provider_name(&self) -> String {
+        match self {
+            CloudProvider::AWS(_) => "AWS".to_string(),
+        }
+    }
+}
+
+impl std::fmt::Debug for CloudProvider {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CloudProvider::AWS(_) => write!(f, "AWS"),
+        }
+    }
+}
+
+impl std::fmt::Display for CloudProvider {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CloudProvider::AWS(_) => write!(f, "AWS"),
+        }
+    }
 }

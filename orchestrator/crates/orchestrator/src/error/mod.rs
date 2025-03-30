@@ -12,6 +12,9 @@ pub type Result<T> = OrchestratorResult<T>;
 /// Error types for the orchestrator
 #[derive(Error, Debug)]
 pub enum OrchestratorError {
+    /// Setup Command error
+    #[error("Setup Command Error: {0}")]
+    SetupCommandError(String),
     /// Configuration error
     #[error("Configuration error: {0}")]
     ConfigError(String),

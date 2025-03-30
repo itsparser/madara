@@ -11,6 +11,7 @@ pub mod controller;
 /// Contains the core logic for the service
 pub mod core;
 
+pub mod config;
 /// contains all the error handling / errors that can be returned by the service
 pub mod error;
 mod macros;
@@ -20,7 +21,6 @@ pub mod resource;
 pub mod service;
 pub mod setup;
 /// Contains utility modules
-pub mod util;
 /// Contains all the utils that are used by the service
 pub mod utils;
 
@@ -36,7 +36,7 @@ pub use core::client::{
 /// Initialize the orchestrator library
 pub fn init() -> OrchestratorResult<()> {
     // Initialize logging
-    utils::logging::init_logging()?;
+    utils::logging::init_logging();
 
     // Return success
     Ok(())
