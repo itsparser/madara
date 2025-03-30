@@ -3,7 +3,7 @@ use aws_config::SdkConfig;
 
 /// Cloud provider
 /// This enum represents the different cloud providers that the Orchestrator can interact with.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum CloudProvider {
     AWS(Box<SdkConfig>),
 }

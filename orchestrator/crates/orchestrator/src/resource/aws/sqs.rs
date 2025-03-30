@@ -39,7 +39,7 @@ impl Resource for SQS {
     type CheckArgs = ();
 
     async fn new(cloud_provider: Arc<CloudProvider>) -> OrchestratorResult<Self> {
-        match cloud_provider {
+        match &cloud_provider {
             CloudProvider::AWS(aws_config) => {
                 let client = Client::new(&aws_config);
                 Ok(Self { client, queue_url: Arc::new(Mutex::new(None)), prefix: None, suffix: None })
@@ -57,7 +57,7 @@ impl Resource for SQS {
         let exists_q = &self
             .client
             .get_queue_url()
-            .queue_name(&args.queue_name)
+            .queue_name(&args.name)
             .send()
             .await
             .map_err(|e| OrchestratorError::ResourceSetupError(format!("Failed to list queue: {}", e)))?;
@@ -67,11 +67,8 @@ impl Resource for SQS {
             url.clone()
         } else {
             // Create a new queue
-            let queue = self.client.create_queue().queue_name(&args.queue_name).send().await.map_err(|e| {
-                OrchestratorError::ResourceSetupError(format!(
-                    "Failed to create SQS queue '{}': {}",
-                    args.queue_name, e
-                ))
+            let queue = self.client.create_queue().queue_name(&args.name).send().await.map_err(|e| {
+                OrchestratorError::ResourceSetupError(format!("Failed to create SQS queue '{}': {}", args.name, e))
             })?;
 
             queue

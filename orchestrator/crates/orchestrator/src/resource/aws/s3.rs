@@ -1,8 +1,8 @@
 use crate::core::cloud::CloudProvider;
 use crate::error::{OrchestratorError, OrchestratorResult};
+use crate::resource::args::StorageArgs;
 use crate::resource::Resource;
 use async_trait::async_trait;
-use aws_sdk_s3::types::{BucketLocationConstraint, CreateBucketConfiguration};
 use aws_sdk_s3::{Client as S3Client, Client, Error as S3Error};
 use std::sync::Arc;
 
@@ -100,18 +100,17 @@ impl Resource for SSS {
     type CheckResult = bool;
     type TeardownResult = ();
     type Error = S3Error;
-    type SetupArgs = S3BucketSetupArgs;
+    type SetupArgs = StorageArgs;
     type CheckArgs = String; // Bucket name
 
     async fn new(cloud_provider: Arc<CloudProvider>) -> OrchestratorResult<Self> {
-        match cloud_provider {
+        match cloud_provider.as_ref() {
             CloudProvider::AWS(aws_config) => {
                 let client = S3Client::new(&aws_config);
                 Ok(Self { client, region: None, bucket_name: None })
-            }
-            _ => Err(OrchestratorError::InvalidCloudProviderError(
-                "Mismatch Cloud Provider for S3Bucket resource".to_string(),
-            )),
+            } // _ => Err(OrchestratorError::InvalidCloudProviderError(
+              //     "Mismatch Cloud Provider for S3Bucket resource".to_string(),
+              // )),
         }
     }
     /// Setup a new S3 bucket
@@ -136,13 +135,14 @@ impl Resource for SSS {
         }
 
         let mut bucket = self.client.create_bucket().bucket(&args.bucket_name);
+        let bucket_location_constraint = args.bucket_location_constraint.unwrap();
 
-        if args.bucket_location_constraint.as_str() != "us-east-1" {
-            // Create bucket configuration with location constraint
-            let constraint = BucketLocationConstraint::from(args.bucket_location_constraint.as_str());
-            let cfg = CreateBucketConfiguration::builder().location_constraint(constraint).build();
-            bucket = bucket.create_bucket_configuration(cfg);
-        }
+        // if bucket_location_constraint.as_str() != "us-east-1" {
+        //     // Create bucket configuration with location constraint
+        //     let constraint = BucketLocationConstraint::from(bucket_location_constraint);
+        //     let cfg = CreateBucketConfiguration::builder().location_constraint(constraint).build();
+        //     bucket = bucket.create_bucket_configuration(cfg);
+        // }
 
         let result = bucket.send().await.map_err(|e| {
             OrchestratorError::ResourceSetupError(format!("Failed to create S3 bucket '{}': {}", args.bucket_name, e))

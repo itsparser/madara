@@ -18,7 +18,6 @@ mod macros;
 pub mod resource;
 /// Contains all the services that are used by the service
 pub mod service;
-pub mod setup;
 /// Contains utility modules
 /// Contains all the utils that are used by the service
 pub mod utils;

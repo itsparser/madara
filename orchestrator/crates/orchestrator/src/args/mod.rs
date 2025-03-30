@@ -1,18 +1,15 @@
-use alert::AlertValidatedArgs;
 use cairo_vm::types::layout_name::LayoutName;
 use clap::{ArgGroup, Parser, Subcommand};
 use cron::event_bridge::AWSEventBridgeCliArgs;
-use cron::CronValidatedArgs;
 use da::DaValidatedArgs;
 use database::DatabaseValidatedArgs;
 use prover::ProverValidatedArgs;
 use provider::aws::AWSConfigCliArgs;
 use provider::ProviderValidatedArgs;
-use queue::QueueValidatedArgs;
 use snos::SNOSParams;
-use storage::StorageValidatedArgs;
 use url::Url;
 
+use crate::resource::args::{AlertArgs, CronArgs, QueueArgs, StorageArgs};
 pub use instrumentation::InstrumentationCliArgs as InstrumentationParams;
 pub use server::ServerCliArgs as ServerParams;
 pub use service::ServiceCliArgs as ServiceParams;
@@ -165,15 +162,15 @@ impl RunCmd {
         validate_params::validate_provider_params(&self.aws_config_args)
     }
 
-    pub fn validate_alert_params(&self) -> Result<AlertValidatedArgs, String> {
+    pub fn validate_alert_params(&self) -> Result<AlertArgs, String> {
         validate_params::validate_alert_params(&self.aws_sns_args, &self.aws_config_args)
     }
 
-    pub fn validate_queue_params(&self) -> Result<QueueValidatedArgs, String> {
+    pub fn validate_queue_params(&self) -> Result<QueueArgs, String> {
         validate_params::validate_queue_params(&self.aws_sqs_args, &self.aws_config_args)
     }
 
-    pub fn validate_storage_params(&self) -> Result<StorageValidatedArgs, String> {
+    pub fn validate_storage_params(&self) -> Result<StorageArgs, String> {
         validate_params::validate_storage_params(&self.aws_s3_args, &self.aws_config_args)
     }
 
@@ -279,41 +276,30 @@ impl SetupCmd {
         validate_params::validate_provider_params(&self.aws_config_args)
     }
 
-    pub fn validate_storage_params(&self) -> Result<StorageValidatedArgs, String> {
+    pub fn validate_storage_params(&self) -> Result<StorageArgs, String> {
         validate_params::validate_storage_params(&self.aws_s3_args, &self.aws_config_args)
     }
 
-    pub fn validate_queue_params(&self) -> Result<QueueValidatedArgs, String> {
+    pub fn validate_queue_params(&self) -> Result<QueueArgs, String> {
         validate_params::validate_queue_params(&self.aws_sqs_args, &self.aws_config_args)
     }
 
-    pub fn validate_alert_params(&self) -> Result<AlertValidatedArgs, String> {
+    pub fn validate_alert_params(&self) -> Result<AlertArgs, String> {
         validate_params::validate_alert_params(&self.aws_sns_args, &self.aws_config_args)
     }
 
-    pub fn validate_cron_params(&self) -> Result<CronValidatedArgs, String> {
+    pub fn validate_cron_params(&self) -> Result<CronArgs, String> {
         validate_params::validate_cron_params(&self.aws_event_bridge_args, &self.aws_config_args)
     }
 }
 
 pub mod validate_params {
     use std::str::FromStr as _;
-    use std::time::Duration;
 
-    use alloy::primitives::Address;
     // Comment out external crates that don't exist yet
     // use atlantic_service::AtlanticValidatedArgs;
-    use cairo_vm::types::layout_name::LayoutName;
-    // use ethereum_da_client::EthereumDaValidatedArgs;
-    // use ethereum_settlement_client::EthereumSettlementValidatedArgs;
-    // use sharp_service::SharpValidatedArgs;
-    // use starknet_settlement_client::StarknetSettlementValidatedArgs;
-    use url::Url;
-
     use super::alert::aws_sns::AWSSNSCliArgs;
-    use super::alert::AlertValidatedArgs;
     use super::cron::event_bridge::AWSEventBridgeCliArgs;
-    use super::cron::CronValidatedArgs;
     use super::da::ethereum::EthereumDaCliArgs;
     use super::da::DaValidatedArgs;
     use super::database::mongodb::MongoDBCliArgs;
@@ -325,7 +311,6 @@ pub mod validate_params {
     use super::provider::aws::AWSConfigCliArgs;
     use super::provider::{AWSConfigValidatedArgs, ProviderValidatedArgs};
     use super::queue::aws_sqs::AWSSQSCliArgs;
-    use super::queue::QueueValidatedArgs;
     use super::server::ServerCliArgs;
     use super::service::ServiceCliArgs;
     use super::settlement::ethereum::EthereumSettlementCliArgs;
@@ -333,18 +318,15 @@ pub mod validate_params {
     use super::settlement::SettlementValidatedArgs;
     use super::snos::{SNOSCliArgs, SNOSParams};
     use super::storage::aws_s3::AWSS3CliArgs;
-    use super::storage::StorageValidatedArgs;
+    use crate::resource::args::{AlertArgs, CronArgs, QueueArgs, StorageArgs};
+    use alloy::primitives::Address;
+    use cairo_vm::types::layout_name::LayoutName;
 
-    // Use local imports instead of crate-level imports
-    use super::alert::aws_sns::AWSSNSValidatedArgs;
-    use super::cron::event_bridge::AWSEventBridgeValidatedArgs;
     use super::database::mongodb::MongoDBValidatedArgs;
     use super::instrumentation::InstrumentationCliArgs as InstrumentationParams;
     use super::prover_layout::ProverLayoutCliArgs;
-    use super::queue::aws_sqs::AWSSQSValidatedArgs;
     use super::server::ServerCliArgs as ServerParams;
     use super::service::ServiceCliArgs as ServiceParams;
-    use super::storage::aws_s3::AWSS3ValidatedArgs;
 
     pub(crate) fn validate_provider_params(
         aws_config_args: &AWSConfigCliArgs,
@@ -363,11 +345,9 @@ pub mod validate_params {
     pub(crate) fn validate_alert_params(
         aws_sns_args: &AWSSNSCliArgs,
         aws_config_args: &AWSConfigCliArgs,
-    ) -> Result<AlertValidatedArgs, String> {
+    ) -> Result<AlertArgs, String> {
         if aws_sns_args.aws_sns && aws_config_args.aws {
-            Ok(AlertValidatedArgs::AWSSNS(AWSSNSValidatedArgs {
-                sns_arn: aws_sns_args.sns_arn.clone().expect("SNS ARN is required"),
-            }))
+            Ok(AlertArgs { endpoint: aws_sns_args.sns_arn.clone().expect("SNS ARN is required") })
         } else {
             Err("Only AWS SNS is supported as of now".to_string())
         }
@@ -376,13 +356,13 @@ pub mod validate_params {
     pub(crate) fn validate_queue_params(
         aws_sqs_args: &AWSSQSCliArgs,
         aws_config_args: &AWSConfigCliArgs,
-    ) -> Result<QueueValidatedArgs, String> {
+    ) -> Result<QueueArgs, String> {
         if aws_sqs_args.aws_sqs && aws_config_args.aws {
-            Ok(QueueValidatedArgs::AWSSQS(AWSSQSValidatedArgs {
+            Ok(QueueArgs {
                 queue_base_url: aws_sqs_args.queue_base_url.clone().expect("Queue base URL is required"),
                 prefix: aws_sqs_args.sqs_prefix.clone().expect("SQS prefix is required"),
                 suffix: aws_sqs_args.sqs_suffix.clone().expect("SQS suffix is required"),
-            }))
+            })
         } else {
             Err("Only AWS SQS is supported as of now".to_string())
         }
@@ -391,12 +371,12 @@ pub mod validate_params {
     pub(crate) fn validate_storage_params(
         aws_s3_args: &AWSS3CliArgs,
         aws_config_args: &AWSConfigCliArgs,
-    ) -> Result<StorageValidatedArgs, String> {
+    ) -> Result<StorageArgs, String> {
         if aws_s3_args.aws_s3 && aws_config_args.aws {
-            Ok(StorageValidatedArgs::AWSS3(AWSS3ValidatedArgs {
+            Ok(StorageArgs {
                 bucket_name: aws_s3_args.bucket_name.clone().expect("Bucket name is required"),
                 bucket_location_constraint: aws_s3_args.bucket_location_constraint.clone(),
-            }))
+            })
         } else {
             Err("Only AWS S3 is supported as of now".to_string())
         }
@@ -405,12 +385,12 @@ pub mod validate_params {
     pub(crate) fn validate_cron_params(
         aws_event_bridge_args: &AWSEventBridgeCliArgs,
         aws_config_args: &AWSConfigCliArgs,
-    ) -> Result<CronValidatedArgs, String> {
+    ) -> Result<CronArgs, String> {
         if aws_event_bridge_args.aws_event_bridge && aws_config_args.aws {
             let event_bridge_type =
                 aws_event_bridge_args.event_bridge_type.clone().expect("Event Bridge type is required");
 
-            Ok(CronValidatedArgs::AWSEventBridge(AWSEventBridgeValidatedArgs {
+            Ok(CronArgs {
                 event_bridge_type,
                 target_queue_name: aws_event_bridge_args
                     .target_queue_name
@@ -429,7 +409,7 @@ pub mod validate_params {
                     .trigger_policy_name
                     .clone()
                     .expect("Trigger policy name is required"),
-            }))
+            })
         } else {
             Err("Only AWS Event Bridge is supported as of now".to_string())
         }
@@ -623,7 +603,6 @@ pub mod validate_params {
 
     #[cfg(test)]
     pub mod test {
-
         use rstest::rstest;
         use url::Url;
 

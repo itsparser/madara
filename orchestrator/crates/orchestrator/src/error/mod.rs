@@ -30,6 +30,9 @@ pub enum OrchestratorError {
     /// Resource Setup error
     #[error("Resource setup error: {0}")]
     ResourceSetupError(String),
+    /// Setup error
+    #[error("Setup error: {0}")]
+    SetupError(String),
     /// AWS SDK error
     #[error("AWS SDK error: {0}")]
     AWSSDKError(#[from] SdkError<ListBucketsError>),

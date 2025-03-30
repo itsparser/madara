@@ -1,9 +1,15 @@
+use crate::args::provider::ProviderValidatedArgs;
+use crate::args::SetupCmd;
 use crate::core::cloud::CloudProvider;
 use crate::error::{OrchestratorError, OrchestratorResult};
+use crate::resource::args::{AlertArgs, CronArgs, QueueArgs, StorageArgs};
 use crate::resource::aws::s3::SSS;
 use crate::resource::aws::sqs::SQS;
 use crate::resource::Resource;
 use async_trait::async_trait;
+use aws_config::Region;
+use aws_credential_types::Credentials;
+use log::info;
 use std::any::Any;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -68,7 +74,7 @@ pub struct S3ResourceCreator;
 #[async_trait]
 impl ResourceCreator for S3ResourceCreator {
     async fn create_resource(&self, cloud_provider: Arc<CloudProvider>) -> OrchestratorResult<ResourceWrapper> {
-        let s3 = SSS::new(cloud_provider).await?;
+        let s3 = SSS::new(cloud_provider.clone()).await?;
         Ok(ResourceWrapper::new(cloud_provider, s3, ResourceType::Storage))
     }
 }
@@ -88,24 +94,65 @@ impl ResourceCreator for SQSResourceCreator {
 pub struct ResourceFactory {
     creators: HashMap<ResourceType, Box<dyn ResourceCreator>>,
     cloud_provider: Arc<CloudProvider>,
+    queue_params: QueueArgs,
+    cron_params: CronArgs,
+    storage_params: StorageArgs,
+    alert_params: AlertArgs,
 }
 
 impl ResourceFactory {
     /// new_with_gcs - Create a new ResourceFactory with default resource creators for Orchestrator
     /// with GCS Cloud Provider
-    pub fn new_with_gcs(cloud_provider: Arc<CloudProvider>) -> Self {
+    pub fn new_with_gcs(
+        cloud_provider: Arc<CloudProvider>,
+        queue_params: QueueArgs,
+        cron_params: CronArgs,
+        storage_params: StorageArgs,
+        alert_params: AlertArgs,
+    ) -> Self {
         let mut creators = HashMap::new();
-        ResourceFactory { creators, cloud_provider }
+        ResourceFactory { creators, cloud_provider, queue_params, cron_params, storage_params, alert_params }
     }
 
     /// new_with_aws - Create a new ResourceFactory with default resource creators for Orchestrator
     /// with AWS Cloud Provider
-    pub fn new_with_aws(cloud_provider: Arc<CloudProvider>) -> Self {
+    pub fn new_with_aws(
+        cloud_provider: Arc<CloudProvider>,
+        queue_params: QueueArgs,
+        cron_params: CronArgs,
+        storage_params: StorageArgs,
+        alert_params: AlertArgs,
+    ) -> Self {
         let mut creators = HashMap::new();
         creators.insert(ResourceType::Storage, Box::new(S3ResourceCreator) as Box<dyn ResourceCreator>);
-        creators.insert(ResourceType::Queue, Box::new(SQSResourceCreator) as Box<dyn ResourceCreator>);
+        // creators.insert(ResourceType::Queue, Box::new(SQSResourceCreator) as Box<dyn ResourceCreator>);
 
-        ResourceFactory { creators, cloud_provider }
+        ResourceFactory { creators, cloud_provider, queue_params, cron_params, storage_params, alert_params }
+    }
+
+    pub async fn setup_resource(&self) -> OrchestratorResult<()> {
+        for (resource_type, creator) in self.creators.iter() {
+            let mut resource = creator.create_resource(self.cloud_provider.clone()).await?;
+            match resource_type {
+                ResourceType::Storage => {
+                    let rs = resource.downcast_mut::<SSS>().unwrap();
+                    rs.setup(self.storage_params.clone()).await?;
+                }
+                ResourceType::Queue => {
+                    // let mut rs = resource.downcast_mut::<SQS>().unwrap();
+                    // rs.setup(self.queue_params.clone()).await?;
+                    //
+                    // resource.setup(self.queue_params.clone()).await?;
+                } // ResourceType::Cron => {
+                //     resource.setup(self.cron_params.clone()).await?;
+                // }
+                // ResourceType::Alert => {
+                //     resource.setup(self.alert_params.clone()).await?;
+                // }
+                _ => {}
+            }
+        }
+        Ok(())
     }
 
     /// Register a new resource creator
@@ -142,14 +189,48 @@ impl ResourceFactory {
 }
 
 /// Setup function that initializes all necessary resources
-pub async fn setup(cloud_provider: Arc<CloudProvider>) -> OrchestratorResult<Vec<ResourceWrapper>> {
-    // let factory = ResourceFactory::new();
-    let mut setup_resources = Vec::new();
+pub async fn setup(setup_cmd: &SetupCmd) -> OrchestratorResult<()> {
+    let cloud_provider = setup_cloud_provider(&setup_cmd).await?;
 
-    let resources = match cloud_provider.clone() {
-        CloudProvider::AWS(_) => ResourceFactory::new_with_aws(cloud_provider),
-        (a) => Err(OrchestratorError::InvalidCloudProviderError(a.to_string()))?,
+    info!("Setting up resources for Orchestrator...");
+
+    let queue_params = setup_cmd.validate_queue_params().map_err(|e| OrchestratorError::SetupCommandError(e))?;
+    let storage_params = setup_cmd.validate_storage_params().map_err(|e| OrchestratorError::SetupCommandError(e))?;
+    let alert_params = setup_cmd.validate_alert_params().map_err(|e| OrchestratorError::SetupCommandError(e))?;
+    let cron_params = setup_cmd.validate_cron_params().map_err(|e| OrchestratorError::SetupCommandError(e))?;
+
+    let resources = match cloud_provider.clone().get_provider_name().as_str() {
+        "AWS" => ResourceFactory::new_with_aws(cloud_provider, queue_params, cron_params, storage_params, alert_params),
+        a => Err(OrchestratorError::InvalidCloudProviderError(a.to_string()))?,
+    };
+    resources.setup_resource().await?;
+
+    Ok(())
+}
+
+/// Setup the orchestrator with the provided configuration
+pub async fn setup_cloud_provider(setup_cmd: &SetupCmd) -> OrchestratorResult<Arc<CloudProvider>> {
+    tracing::info!("Starting orchestrator setup...");
+
+    let provider_params = setup_cmd.validate_provider_params().map_err(|e| OrchestratorError::SetupCommandError(e))?;
+
+    // Initialize cloud provider
+    tracing::info!("Initializing cloud provider...");
+    let aws_config = match provider_params {
+        ProviderValidatedArgs::AWS(aws_config) => aws_config,
     };
 
-    Ok(setup_resources)
+    // Create AWS SDK config
+    let sdk_config = aws_config::from_env()
+        .region(Region::new(aws_config.aws_region.clone()))
+        .credentials_provider(Credentials::from_keys(
+            &aws_config.aws_access_key_id,
+            &aws_config.aws_secret_access_key,
+            None,
+        ))
+        .load()
+        .await;
+    let cloud_provider = Arc::new(CloudProvider::AWS(Box::new(sdk_config)));
+
+    Ok(cloud_provider)
 }
