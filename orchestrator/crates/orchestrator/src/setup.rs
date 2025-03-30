@@ -17,15 +17,15 @@ pub fn setup(setup_cmd: &SetupCmd) -> OrchestratorResult<()> {
     info!(" 🌎 Initializing Cloud Provider");
     setup_cmd.validate_provider_params();
 
-    let cloud_provider = match setup_cmd.aws_config_args {
-        "aws" => CloudProvider::AWS(Box::new(aws_config::load_from_env().await?)),
-        _ => {
-            return Err(OrchestratorError::InvalidCloudProviderError(format!(
-                "Invalid cloud provider: {}",
-                setup_cmd.cloud_provider
-            )))
-        }
-    };
+    // let cloud_provider = match setup_cmd.aws_config_args {
+    //     "aws" => CloudProvider::AWS(Box::new(aws_config::load_from_env().await?)),
+    //     _ => {
+    //         return Err(OrchestratorError::InvalidCloudProviderError(format!(
+    //             "Invalid cloud provider: {}",
+    //             setup_cmd.cloud_provider
+    //         )))
+    //     }
+    // };
     Ok(())
 }
 

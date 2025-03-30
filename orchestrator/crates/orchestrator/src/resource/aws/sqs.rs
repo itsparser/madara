@@ -17,7 +17,7 @@ pub struct SQS {
 }
 
 pub struct SQSSetupArgs {
-    pub queue_name: String,
+    pub name: String,
     pub visibility_timeout: u32,
 }
 
@@ -160,9 +160,9 @@ mod tests {
 
     #[test]
     fn test_setup_args() {
-        let args = SQSSetupArgs { queue_name: "test-queue".to_string(), visibility_timeout: 30 };
+        let args = SQSSetupArgs { name: "test-queue".to_string(), visibility_timeout: 30 };
 
-        assert_eq!(args.queue_name, "test-queue");
+        assert_eq!(args.name, "test-queue");
         assert_eq!(args.visibility_timeout, 30);
     }
 

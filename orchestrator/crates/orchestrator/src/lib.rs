@@ -11,7 +11,6 @@ pub mod controller;
 /// Contains the core logic for the service
 pub mod core;
 
-pub mod config;
 /// contains all the error handling / errors that can be returned by the service
 pub mod error;
 mod macros;

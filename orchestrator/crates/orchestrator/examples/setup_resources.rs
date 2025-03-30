@@ -1,4 +1,4 @@
-use aws_config::{Region, SdkConfig};
+use aws_config::Region;
 use clap::Parser;
 use orchestrator::core::cloud::CloudProvider;
 use orchestrator::error::OrchestratorResult;
@@ -6,6 +6,7 @@ use orchestrator::resource::aws::s3::{S3BucketSetupArgs, SSS};
 use orchestrator::resource::aws::sqs::{SQSSetupArgs, SQS};
 use orchestrator::resource::Resource;
 use orchestrator::utils::env::Env;
+use std::sync::Arc;
 
 /// CLI arguments for resource setup
 #[derive(Parser, Debug)]
@@ -44,23 +45,23 @@ async fn main() -> OrchestratorResult<()> {
     // Load AWS configuration with explicit region
     let config = aws_config::from_env().region(Region::new(env.aws_region.clone())).load().await;
 
-    let cloud_provider = CloudProvider::AWS(Box::new(config));
+    let cloud_provider = Arc::new(CloudProvider::AWS(Box::new(config)));
 
     println!("Using prefix: {}", env.prefix);
     println!("Using AWS region: {}", env.aws_region);
 
     // Set up S3 bucket
-    setup_s3_bucket(&cloud_provider, &env).await?;
+    setup_s3_bucket(cloud_provider, &env).await?;
 
     // Set up SQS queues
-    setup_sqs_queue(&cloud_provider, "notifications", &env).await?;
-    setup_sqs_queue(&cloud_provider, "jobs", &env).await?;
+    setup_sqs_queue(cloud_provider, "notifications", &env).await?;
+    setup_sqs_queue(cloud_provider, "jobs", &env).await?;
 
     println!("All resources have been set up successfully!");
     Ok(())
 }
 
-async fn setup_s3_bucket(cloud_provider: &CloudProvider, env: &Env) -> OrchestratorResult<()> {
+async fn setup_s3_bucket(cloud_provider: Arc<CloudProvider>, env: &Env) -> OrchestratorResult<()> {
     println!("Setting up S3 bucket...");
 
     // Create S3 resource
@@ -90,11 +91,11 @@ async fn setup_s3_bucket(cloud_provider: &CloudProvider, env: &Env) -> Orchestra
     }
 }
 
-async fn setup_sqs_queue(cloud_provider: &CloudProvider, base_name: &str, env: &Env) -> OrchestratorResult<()> {
+async fn setup_sqs_queue(cloud_provider: Arc<CloudProvider>, base_name: &str, env: &Env) -> OrchestratorResult<()> {
     println!("Setting up SQS queue for {}...", base_name);
 
     // Create SQS resource
-    let sqs = SQS::new(cloud_provider.clone()).await?;
+    let sqs = SQS::new(Arc::from(cloud_provider.clone())).await?;
 
     // Create the full queue name with prefix and suffix
     let queue_name = format!("{}-{}-{}", env.prefix, base_name, env.sqs_suffix);
@@ -106,14 +107,14 @@ async fn setup_sqs_queue(cloud_provider: &CloudProvider, base_name: &str, env: &
 
     // Create setup args
     let setup_args = SQSSetupArgs {
-        queue_name,
+        name: queue_name,
         visibility_timeout: 30, // Default visibility timeout
     };
 
     // Set up the queue
     match sqs.setup(setup_args).await {
         Ok(result) => {
-            println!("SQS queue '{}' created or confirmed!", result.queue_name);
+            println!("SQS queue '{}' created or confirmed!", result.name);
             Ok(())
         }
         Err(e) => {
