@@ -1,5 +1,6 @@
 use chrono::Utc;
 use tracing::{Event, Level, Subscriber};
+use tracing_log::LogTracer;
 use tracing_subscriber::fmt;
 use tracing_subscriber::fmt::FmtContext;
 use tracing_subscriber::fmt::{format::Writer, FormatEvent, FormatFields};
@@ -95,10 +96,23 @@ impl tracing::field::Visit for FieldExtractor {
 /// This will also install color_eyre to handle the panic in the application
 pub fn init_logging() {
     color_eyre::install().expect("Unable to install color_eyre");
+    // let subscriber = tracing_subscriber::Registry::default().with(ErrorLayer::default()).with(
+    //     fmt::layer().with_target(false).with_thread_ids(true).with_thread_names(true).with_timer(UtcTime::rfc_3339()), // .with_span_events(tracing_subscriber::fmt::format::FmtSpan::CLOSE),
+    // );
+    // let sub = tracing_subscriber::Registry::default().with(ErrorLayer::default()).with(
+    //     tracing_subscriber::fmt::layer()
+    //         .with_target(false)
+    //         .with_thread_ids(true)
+    //         .with_thread_names(true)
+    //         .with_timer(UtcTime::rfc_3339()),
+    // );
+    // .with(tracing_log::LogTracer::new());
+    LogTracer::init().expect("Failed to set logger");
     let subscriber = fmt::Subscriber::builder()
         .with_thread_names(true)
         .with_thread_ids(true)
         .with_target(false)
+        // .with_span_events(tracing_subscriber::fmt::format::FmtSpan::CLOSE)
         .event_format(PrettyFormatter)
         .finish();
 

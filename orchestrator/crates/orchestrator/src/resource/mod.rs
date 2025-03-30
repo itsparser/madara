@@ -1,5 +1,6 @@
 pub mod args;
 pub mod aws;
+pub mod config;
 pub mod setup;
 
 use crate::core::cloud::CloudProvider;

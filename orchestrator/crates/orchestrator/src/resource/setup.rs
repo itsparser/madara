@@ -9,10 +9,11 @@ use crate::resource::Resource;
 use async_trait::async_trait;
 use aws_config::Region;
 use aws_credential_types::Credentials;
-use log::info;
+use aws_sdk_s3;
 use std::any::Any;
 use std::collections::HashMap;
 use std::sync::Arc;
+use tracing::{info, instrument};
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum ResourceType {
@@ -125,13 +126,14 @@ impl ResourceFactory {
     ) -> Self {
         let mut creators = HashMap::new();
         creators.insert(ResourceType::Storage, Box::new(S3ResourceCreator) as Box<dyn ResourceCreator>);
-        // creators.insert(ResourceType::Queue, Box::new(SQSResourceCreator) as Box<dyn ResourceCreator>);
+        creators.insert(ResourceType::Queue, Box::new(SQSResourceCreator) as Box<dyn ResourceCreator>);
 
         ResourceFactory { creators, cloud_provider, queue_params, cron_params, storage_params, alert_params }
     }
 
     pub async fn setup_resource(&self) -> OrchestratorResult<()> {
         for (resource_type, creator) in self.creators.iter() {
+            info!(" ⏳ Setting up resource: {:?}", resource_type);
             let mut resource = creator.create_resource(self.cloud_provider.clone()).await?;
             match resource_type {
                 ResourceType::Storage => {
@@ -139,18 +141,12 @@ impl ResourceFactory {
                     rs.setup(self.storage_params.clone()).await?;
                 }
                 ResourceType::Queue => {
-                    // let mut rs = resource.downcast_mut::<SQS>().unwrap();
-                    // rs.setup(self.queue_params.clone()).await?;
-                    //
-                    // resource.setup(self.queue_params.clone()).await?;
-                } // ResourceType::Cron => {
-                //     resource.setup(self.cron_params.clone()).await?;
-                // }
-                // ResourceType::Alert => {
-                //     resource.setup(self.alert_params.clone()).await?;
-                // }
+                    let rs = resource.downcast_mut::<SQS>().unwrap();
+                    rs.setup(self.queue_params.clone()).await?;
+                }
                 _ => {}
             }
+            info!(" ✅ Resource setup completed: {:?}", resource_type);
         }
         Ok(())
     }
@@ -189,6 +185,7 @@ impl ResourceFactory {
 }
 
 /// Setup function that initializes all necessary resources
+#[instrument]
 pub async fn setup(setup_cmd: &SetupCmd) -> OrchestratorResult<()> {
     let cloud_provider = setup_cloud_provider(&setup_cmd).await?;
 
@@ -208,14 +205,11 @@ pub async fn setup(setup_cmd: &SetupCmd) -> OrchestratorResult<()> {
     Ok(())
 }
 
-/// Setup the orchestrator with the provided configuration
+/// Set up the orchestrator with the provided configuration
 pub async fn setup_cloud_provider(setup_cmd: &SetupCmd) -> OrchestratorResult<Arc<CloudProvider>> {
-    tracing::info!("Starting orchestrator setup...");
-
     let provider_params = setup_cmd.validate_provider_params().map_err(|e| OrchestratorError::SetupCommandError(e))?;
 
-    // Initialize cloud provider
-    tracing::info!("Initializing cloud provider...");
+    info!("Initializing cloud provider...");
     let aws_config = match provider_params {
         ProviderValidatedArgs::AWS(aws_config) => aws_config,
     };
@@ -230,6 +224,17 @@ pub async fn setup_cloud_provider(setup_cmd: &SetupCmd) -> OrchestratorResult<Ar
         ))
         .load()
         .await;
+
+    // Validate AWS access by attempting to list S3 buckets
+    info!("Validating AWS credentials and permissions...");
+    let s3_client = aws_sdk_s3::Client::new(&sdk_config);
+    s3_client
+        .list_buckets()
+        .send()
+        .await
+        .map_err(|e| OrchestratorError::InvalidCloudProviderError(format!("Failed to validate AWS access: {}", e)))?;
+    info!("AWS credentials validated successfully");
+
     let cloud_provider = Arc::new(CloudProvider::AWS(Box::new(sdk_config)));
 
     Ok(cloud_provider)

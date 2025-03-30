@@ -47,7 +47,7 @@ async fn main() {
         }
         Commands::Setup { setup_command } => {
             if let Err(e) = setup_orchestrator(setup_command).await {
-                tracing::error!("Failed to setup orchestrator: {}", e);
+                tracing::error!("Failed to setup orchestrator: {:?}", e);
                 std::process::exit(1);
             }
         }

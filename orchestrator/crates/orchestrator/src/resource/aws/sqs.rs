@@ -1,5 +1,8 @@
 use crate::core::cloud::CloudProvider;
+use crate::core::QueueType;
 use crate::error::{OrchestratorError, OrchestratorResult};
+use crate::resource::args::QueueArgs;
+use crate::resource::config::QUEUES;
 use crate::resource::Resource;
 use async_trait::async_trait;
 use aws_sdk_sqs::types::QueueAttributeName;
@@ -26,15 +29,45 @@ impl SQS {
     pub fn get_queue_url(base_url: &str, queue_name: &str) -> String {
         format!("{}/{}", base_url, queue_name)
     }
+
+    pub fn get_queue_name(&self, sqs_prefix: String, queue_type: QueueType, sqs_suffix: String) -> String {
+        format!("{}_{:?}_{}", sqs_prefix, queue_type, sqs_suffix)
+    }
+    /// To get the queue url from the given queue name
+    async fn get_queue_url_from_client(queue_name: &str, sqs_client: &Client) -> OrchestratorResult<String> {
+        Ok(sqs_client
+            .get_queue_url()
+            .queue_name(queue_name)
+            .send()
+            .await
+            .map_err(|e| OrchestratorError::ResourceError(format!("Failed to get queue url: {}", e)))?
+            .queue_url()
+            .ok_or_else(|| {
+                OrchestratorError::ResourceError("Unable to get queue url from the given queue_name.".to_string())
+            })?
+            .to_string())
+    }
+
+    async fn get_queue_arn(client: &Client, queue_url: &str) -> OrchestratorResult<String> {
+        let attributes = client
+            .get_queue_attributes()
+            .queue_url(queue_url)
+            .attribute_names(QueueAttributeName::QueueArn)
+            .send()
+            .await
+            .map_err(|e| OrchestratorError::ResourceError(format!("Failed to get queue attributes: {}", e)))?;
+
+        Ok(attributes.attributes().unwrap().get(&QueueAttributeName::QueueArn).unwrap().to_string())
+    }
 }
 
 #[async_trait]
 impl Resource for SQS {
-    type SetupResult = SQSSetupArgs;
+    type SetupResult = ();
     type CheckResult = ();
     type TeardownResult = ();
     type Error = ();
-    type SetupArgs = SQSSetupArgs;
+    type SetupArgs = QueueArgs;
 
     type CheckArgs = ();
 
@@ -54,45 +87,44 @@ impl Resource for SQS {
     /// setup SQS queue
     /// check if queue exists, if not create it
     async fn setup(&self, args: Self::SetupArgs) -> OrchestratorResult<Self::SetupResult> {
-        let exists_q = &self
-            .client
-            .get_queue_url()
-            .queue_name(&args.name)
-            .send()
-            .await
-            .map_err(|e| OrchestratorError::ResourceSetupError(format!("Failed to list queue: {}", e)))?;
-
-        // If the queue already exists, just use it
-        let queue_url = if let Some(url) = &exists_q.queue_url {
-            url.clone()
-        } else {
-            // Create a new queue
-            let queue = self.client.create_queue().queue_name(&args.name).send().await.map_err(|e| {
-                OrchestratorError::ResourceSetupError(format!("Failed to create SQS queue '{}': {}", args.name, e))
-            })?;
-
-            queue
+        for queue in QUEUES.iter() {
+            let res = self
+                .client
+                .create_queue()
+                .queue_name(self.get_queue_name(args.prefix.clone(), queue.name.clone(), args.suffix.clone()))
+                .send()
+                .await
+                .map_err(|e| {
+                    OrchestratorError::ResourceSetupError(format!(
+                        "Failed to create SQS queue '{}': {}",
+                        args.queue_base_url, e
+                    ))
+                })?;
+            let queue_url = res
                 .queue_url()
-                .ok_or_else(|| OrchestratorError::ResourceSetupError("Failed to get queue url".to_string()))?
-                .to_string()
-        };
+                .ok_or_else(|| OrchestratorError::ResourceSetupError("Failed to get queue url".to_string()))?;
 
-        // Store the queue URL in self using Arc<Mutex<>>
-        if let Ok(mut queue_url_guard) = self.queue_url.lock() {
-            *queue_url_guard = Some(queue_url.clone());
+            let mut attributes = HashMap::new();
+            attributes.insert(QueueAttributeName::VisibilityTimeout, queue.visibility_timeout.to_string());
+
+            if let Some(dlq_config) = &queue.dlq_config {
+                let dlq_url = Self::get_queue_url_from_client(
+                    self.get_queue_name(args.prefix.clone(), dlq_config.dlq_name.clone(), args.suffix.clone()).as_str(),
+                    &self.client,
+                )
+                .await?;
+                let dlq_arn = Self::get_queue_arn(&self.client, &dlq_url).await?;
+                let policy = format!(
+                    r#"{{"deadLetterTargetArn":"{}","maxReceiveCount":"{}"}}"#,
+                    dlq_arn, &dlq_config.max_receive_count
+                );
+                attributes.insert(QueueAttributeName::RedrivePolicy, policy);
+            }
+
+            self.client.set_queue_attributes().queue_url(queue_url).set_attributes(Some(attributes)).send().await?;
         }
 
-        let mut attributes = HashMap::new();
-        attributes.insert(QueueAttributeName::VisibilityTimeout, args.visibility_timeout.to_string());
-        self.client
-            .set_queue_attributes()
-            .queue_url(&queue_url)
-            .set_attributes(Some(attributes))
-            .send()
-            .await
-            .map_err(|e| OrchestratorError::ResourceSetupError(format!("Failed to set queue attributes: {}", e)))?;
-
-        Ok(args)
+        Ok(())
     }
 
     async fn check(&self, _args: Self::CheckArgs) -> OrchestratorResult<Self::CheckResult> {

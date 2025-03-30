@@ -7,6 +7,7 @@ use crate::error::Result;
 
 /// Queue types for different job processing
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
 pub enum QueueType {
     /// Snos job processing queue
     SnosJobProcessing,

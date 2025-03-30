@@ -360,7 +360,11 @@ pub mod validate_params {
         if aws_sqs_args.aws_sqs && aws_config_args.aws {
             Ok(QueueArgs {
                 queue_base_url: aws_sqs_args.queue_base_url.clone().expect("Queue base URL is required"),
-                prefix: aws_sqs_args.sqs_prefix.clone().expect("SQS prefix is required"),
+                prefix: format!(
+                    "{}-{}",
+                    aws_config_args.aws_prefix,
+                    aws_sqs_args.sqs_prefix.clone().expect("SQS prefix is required")
+                ),
                 suffix: aws_sqs_args.sqs_suffix.clone().expect("SQS suffix is required"),
             })
         } else {
@@ -373,8 +377,9 @@ pub mod validate_params {
         aws_config_args: &AWSConfigCliArgs,
     ) -> Result<StorageArgs, String> {
         if aws_s3_args.aws_s3 && aws_config_args.aws {
+            let bucket_name = aws_s3_args.bucket_name.clone().expect("Bucket name is required");
             Ok(StorageArgs {
-                bucket_name: aws_s3_args.bucket_name.clone().expect("Bucket name is required"),
+                bucket_name: format!("{}-{}", aws_config_args.aws_prefix, bucket_name),
                 bucket_location_constraint: aws_s3_args.bucket_location_constraint.clone(),
             })
         } else {
@@ -389,26 +394,35 @@ pub mod validate_params {
         if aws_event_bridge_args.aws_event_bridge && aws_config_args.aws {
             let event_bridge_type =
                 aws_event_bridge_args.event_bridge_type.clone().expect("Event Bridge type is required");
+            let prefix = &aws_config_args.aws_prefix;
+            let target_queue_name = format!(
+                "{}-{}",
+                prefix,
+                aws_event_bridge_args.target_queue_name.clone().expect("Target queue name is required")
+            );
+            let trigger_rule_name = format!(
+                "{}-{}",
+                prefix,
+                aws_event_bridge_args.trigger_rule_name.clone().expect("Trigger rule name is required")
+            );
+            let trigger_role_name = format!(
+                "{}-{}",
+                prefix,
+                aws_event_bridge_args.trigger_role_name.clone().expect("Trigger role name is required")
+            );
+            let trigger_policy_name = format!(
+                "{}-{}",
+                prefix,
+                aws_event_bridge_args.trigger_policy_name.clone().expect("Trigger policy name is required")
+            );
 
             Ok(CronArgs {
                 event_bridge_type,
-                target_queue_name: aws_event_bridge_args
-                    .target_queue_name
-                    .clone()
-                    .expect("Target queue name is required"),
+                target_queue_name,
                 cron_time: aws_event_bridge_args.cron_time.clone().expect("Cron time is required"),
-                trigger_rule_name: aws_event_bridge_args
-                    .trigger_rule_name
-                    .clone()
-                    .expect("Trigger rule name is required"),
-                trigger_role_name: aws_event_bridge_args
-                    .trigger_role_name
-                    .clone()
-                    .expect("Trigger role name is required"),
-                trigger_policy_name: aws_event_bridge_args
-                    .trigger_policy_name
-                    .clone()
-                    .expect("Trigger policy name is required"),
+                trigger_rule_name,
+                trigger_role_name,
+                trigger_policy_name,
             })
         } else {
             Err("Only AWS Event Bridge is supported as of now".to_string())
@@ -639,6 +653,7 @@ pub mod validate_params {
                 aws_access_key_id: "".to_string(),
                 aws_secret_access_key: "".to_string(),
                 aws_region: "".to_string(),
+                aws_prefix: "madara-orchestrator".to_string(),
             };
 
             let provider_params = validate_provider_params(&aws_config_args);
@@ -660,6 +675,7 @@ pub mod validate_params {
                 aws_access_key_id: "".to_string(),
                 aws_secret_access_key: "".to_string(),
                 aws_region: "".to_string(),
+                aws_prefix: "madara-orchestrator".to_string(),
             };
             let aws_sns_args: AWSSNSCliArgs = AWSSNSCliArgs { aws_sns: is_sns, sns_arn: Some("".to_string()) };
 
@@ -713,6 +729,7 @@ pub mod validate_params {
                 aws_access_key_id: "".to_string(),
                 aws_secret_access_key: "".to_string(),
                 aws_region: "".to_string(),
+                aws_prefix: "madara-orchestrator".to_string(),
             };
             let storage_params = validate_storage_params(&aws_s3_args, &aws_config_args);
             if is_aws && is_s3 {
@@ -838,6 +855,7 @@ pub mod validate_params {
                 aws_access_key_id: "".to_string(),
                 aws_secret_access_key: "".to_string(),
                 aws_region: "".to_string(),
+                aws_prefix: "madara-orchestrator".to_string(),
             };
             let cron_params = validate_cron_params(&aws_event_bridge_args, &aws_config_args);
             if is_aws {

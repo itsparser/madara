@@ -5,7 +5,7 @@ use crate::resource::Resource;
 use async_trait::async_trait;
 use aws_sdk_s3::{Client as S3Client, Client, Error as S3Error};
 use std::sync::Arc;
-use tracing::info;
+use tracing::{error, info, instrument, warn};
 
 #[derive(Clone, Debug)]
 pub struct SSS {
@@ -115,6 +115,7 @@ impl Resource for SSS {
         }
     }
     /// Setup a new S3 bucket
+    #[instrument]
     async fn setup(&self, args: Self::SetupArgs) -> OrchestratorResult<Self::SetupResult> {
         // Check if bucket already exists
         let existing_buckets = &self
@@ -124,31 +125,34 @@ impl Resource for SSS {
             .await
             .map_err(|e| OrchestratorError::ResourceSetupError(format!("Failed to list buckets: {}", e)))?;
 
-        info!(" Creating New Bucket: {}", args.bucket_name);
-
         for bucket in existing_buckets.buckets() {
             if let Some(name) = &bucket.name {
                 if name == &args.bucket_name {
-                    return Err(OrchestratorError::ResourceAlreadyExistsError(format!(
-                        "S3 bucket '{}' already exists",
-                        args.bucket_name
-                    )));
+                    warn!("S3 bucket '{}' already exists", args.bucket_name);
+                    return Ok(S3BucketSetupResult { name: args.bucket_name, location: None });
+                    // return Err(OrchestratorError::ResourceAlreadyExistsError(format!(
+                    //     "S3 bucket '{}' already exists",
+                    //     args.bucket_name
+                    // )));
                 }
             }
         }
+        info!("Creating New Bucket: {}", args.bucket_name);
+
+        // Get the current region from the client config
+        let region = self.client.config().region().map(|r| r.to_string()).unwrap_or_else(|| "us-east-1".to_string());
+        info!("Creating bucket in region: {}", region);
 
         let mut bucket = self.client.create_bucket().bucket(&args.bucket_name);
-        let bucket_location_constraint = args.bucket_location_constraint.unwrap_or("us-east-1".to_string());
 
-        if bucket_location_constraint.as_str() != "us-east-1" {
-            // Create bucket configuration with location constraint
-            let constraint = aws_sdk_s3::types::BucketLocationConstraint::from(bucket_location_constraint.as_str());
+        if region != "us-east-1" {
+            let constraint = aws_sdk_s3::types::BucketLocationConstraint::from(region.as_str());
             let cfg = aws_sdk_s3::types::CreateBucketConfiguration::builder().location_constraint(constraint).build();
             bucket = bucket.create_bucket_configuration(cfg);
         }
 
         let result = bucket.send().await.map_err(|e| {
-            OrchestratorError::ResourceSetupError(format!("Failed to create S3 bucket '{}': {}", args.bucket_name, e))
+            OrchestratorError::ResourceSetupError(format!("Failed to create S3 bucket '{}': {:?}", args.bucket_name, e))
         })?;
         Ok(S3BucketSetupResult { name: args.bucket_name, location: result.location })
     }
