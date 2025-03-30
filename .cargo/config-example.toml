@@ -1,0 +1,169 @@
+#===========================================================
+# Madara Orchestrator Configuration
+#===========================================================
+
+[project]
+name = "madara-orchestrator"
+environment = "development"  # development, staging, production
+
+#-----------------------------------------------------------
+# Cloud Provider Configuration
+#-----------------------------------------------------------
+
+[provider]
+type = "aws"  # Required: aws, azure, gcp
+region = "us-west-2"
+access_key_id = ""  # Required for AWS
+secret_access_key = ""  # Required for AWS
+
+#-----------------------------------------------------------
+# Settlement Layer Configuration
+#-----------------------------------------------------------
+
+[settlement]
+type = "ethereum"  # Required: ethereum, starknet
+
+[settlement.ethereum]
+rpc_url = ""
+private_key = ""
+contract_address = ""
+chain_id = 1
+
+[settlement.starknet]
+rpc_url = ""
+private_key = ""
+contract_address = ""
+chain_id = 1
+
+#-----------------------------------------------------------
+# Storage Configuration
+#-----------------------------------------------------------
+
+[storage]
+type = "s3"  # Required: s3
+
+[storage.s3]
+bucket_name = ""
+public_access = false
+versioning = true
+cors_enabled = false
+
+#-----------------------------------------------------------
+# Queue Configuration
+#-----------------------------------------------------------
+
+[queue]
+type = "sqs"  # Required: sqs
+
+[queue.sqs]
+queue_url = ""
+max_messages = 10
+wait_time = 20
+
+#-----------------------------------------------------------
+# Server Configuration
+#-----------------------------------------------------------
+
+[server]
+host = "127.0.0.1"
+port = 8080
+workers = 4
+
+#-----------------------------------------------------------
+# Alert Configuration
+#-----------------------------------------------------------
+
+[alert]
+type = "sns"  # Required: sns
+
+[alert.sns]
+topic_arn = ""
+region = ""
+
+#-----------------------------------------------------------
+# Database Configuration
+#-----------------------------------------------------------
+
+[database]
+type = "mongodb"  # Required: mongodb
+
+[database.mongodb]
+uri = ""
+database = ""
+collection = ""
+
+#-----------------------------------------------------------
+# Data Availability Layer Configuration
+#-----------------------------------------------------------
+
+[da]
+type = "ethereum"  # Required: ethereum
+
+[da.ethereum]
+rpc_url = ""
+private_key = ""
+contract_address = ""
+
+#-----------------------------------------------------------
+# Prover Configuration
+#-----------------------------------------------------------
+
+[prover]
+type = "sharp"  # Required: sharp, atlantic
+
+[prover.sharp]
+url = ""
+token = ""
+
+[prover.atlantic]
+url = ""
+token = ""
+
+[prover.layout]
+program = "cairo0"  # cairo0, cairo1
+recursive = "cairo0"  # cairo0, cairo1
+
+#-----------------------------------------------------------
+# SNOS Configuration
+#-----------------------------------------------------------
+
+[snos]
+enabled = true
+endpoint = ""
+token = ""
+
+#-----------------------------------------------------------
+# Madara Configuration
+#-----------------------------------------------------------
+
+[madara]
+rpc_url = ""  # Required
+
+#-----------------------------------------------------------
+# Service Configuration
+#-----------------------------------------------------------
+
+[service]
+name = ""
+version = ""
+environment = "development"
+
+#-----------------------------------------------------------
+# Instrumentation Configuration
+#-----------------------------------------------------------
+
+[instrumentation]
+metrics_port = 9090
+tracing_endpoint = ""
+
+#-----------------------------------------------------------
+# Cron Configuration
+#-----------------------------------------------------------
+
+[cron]
+type = "eventbridge"  # Required: eventbridge
+
+[cron.eventbridge]
+rule_name = ""
+schedule = ""
+target_arn = ""

@@ -1,71 +1,63 @@
+/// Contains the CLI arguments for the service
+pub mod args;
+/// Client for the Orchestrator
+// pub mod client;
+
+/// Contains the CLI arguments for the service
+pub mod constants;
+/// Contain the controllers for the service
+pub mod controller;
+
+/// Contains the core logic for the service
+pub mod core;
+
+// pub mod config;
+/// contains all the error handling / errors that can be returned by the service
+pub mod error;
+/// contains all the resources that can be used by the service
+pub mod resource;
+/// Contains all the services that are used by the service
+pub mod service;
+/// Contains all the utils that are used by the service
+pub mod utils;
+
+use crate::args::{Cli, Commands, RunCmd, SetupCmd};
+use crate::error::OrchestratorResult;
+use crate::resource::setup::setup;
+use crate::utils::logging::init_logging;
 use clap::Parser as _;
 use dotenvy::dotenv;
-use orchestrator::cli::{Cli, Commands, RunCmd, SetupCmd};
-use orchestrator::config::init_config;
-use orchestrator::queue::init_consumers;
-use orchestrator::routes::setup_server;
-use orchestrator::setup::setup_cloud;
-use orchestrator::telemetry::{setup_analytics, shutdown_analytics};
 
 #[global_allocator]
 static A: jemallocator::Jemalloc = jemallocator::Jemalloc;
 
-/// Start the server
 #[tokio::main]
-// not sure why clippy gives this error on the latest rust
-// version but have added it for now
-#[allow(clippy::needless_return)]
 async fn main() {
     dotenv().ok();
-
     let cli = Cli::parse();
+    init_logging();
+    tracing::info!("Starting orchestrator");
 
     match &cli.command {
         Commands::Run { run_command } => {
-            run_orchestrator(run_command).await.expect("Failed to run orchestrator");
+            if let Err(e) = run_orchestrator(run_command).await {
+                tracing::error!("Failed to run orchestrator: {}", e);
+                std::process::exit(1);
+            }
         }
         Commands::Setup { setup_command } => {
-            setup_orchestrator(setup_command).await.expect("Failed to setup orchestrator");
+            if let Err(e) = setup_orchestrator(setup_command).await {
+                tracing::error!("Failed to setup orchestrator: {:?}", e);
+                std::process::exit(1);
+            }
         }
     }
 }
 
-async fn run_orchestrator(run_cmd: &RunCmd) -> color_eyre::Result<()> {
-    // Analytics Setup
-    let instrumentation_params = run_cmd.validate_instrumentation_params().expect("Invalid instrumentation params");
-    let meter_provider = setup_analytics(&instrumentation_params);
-    tracing::info!(service = "orchestrator", "Starting orchestrator service");
-
-    color_eyre::install().expect("Unable to install color_eyre");
-
-    // initial config setup
-    let config = init_config(run_cmd).await.expect("Config instantiation failed");
-    tracing::debug!(service = "orchestrator", "Configuration initialized");
-
-    // initialize the server
-    let _ = setup_server(config.clone()).await;
-
-    tracing::debug!(service = "orchestrator", "Application router initialized");
-
-    // init consumer
-    match init_consumers(config).await {
-        Ok(_) => tracing::info!(service = "orchestrator", "Consumers initialized successfully"),
-        Err(e) => {
-            tracing::error!(service = "orchestrator", error = %e, "Failed to initialize consumers");
-            panic!("Failed to init consumers: {}", e);
-        }
-    }
-
-    tokio::signal::ctrl_c().await.expect("Failed to listen for ctrl+c");
-
-    // Analytics Shutdown
-    shutdown_analytics(meter_provider, &instrumentation_params);
-    tracing::info!(service = "orchestrator", "Orchestrator service shutting down");
-
+async fn run_orchestrator(run_cmd: &RunCmd) -> OrchestratorResult<()> {
     Ok(())
 }
 
-async fn setup_orchestrator(setup_cmd: &SetupCmd) -> color_eyre::Result<()> {
-    setup_cloud(setup_cmd).await.expect("Failed to setup cloud");
-    Ok(())
+async fn setup_orchestrator(setup_cmd: &SetupCmd) -> OrchestratorResult<()> {
+    setup(setup_cmd).await
 }
