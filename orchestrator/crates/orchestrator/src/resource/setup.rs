@@ -85,7 +85,7 @@ pub struct SQSResourceCreator;
 #[async_trait]
 impl ResourceCreator for SQSResourceCreator {
     async fn create_resource(&self, cloud_provider: Arc<CloudProvider>) -> OrchestratorResult<ResourceWrapper> {
-        let sqs = SQS::new(cloud_provider).await?;
+        let sqs = SQS::new(cloud_provider.clone()).await?;
         Ok(ResourceWrapper::new(cloud_provider, sqs, ResourceType::Queue))
     }
 }

@@ -5,6 +5,7 @@ use crate::resource::Resource;
 use async_trait::async_trait;
 use aws_sdk_s3::{Client as S3Client, Client, Error as S3Error};
 use std::sync::Arc;
+use tracing::info;
 
 #[derive(Clone, Debug)]
 pub struct SSS {
@@ -123,6 +124,8 @@ impl Resource for SSS {
             .await
             .map_err(|e| OrchestratorError::ResourceSetupError(format!("Failed to list buckets: {}", e)))?;
 
+        info!(" Creating New Bucket: {}", args.bucket_name);
+
         for bucket in existing_buckets.buckets() {
             if let Some(name) = &bucket.name {
                 if name == &args.bucket_name {
@@ -135,14 +138,14 @@ impl Resource for SSS {
         }
 
         let mut bucket = self.client.create_bucket().bucket(&args.bucket_name);
-        let bucket_location_constraint = args.bucket_location_constraint.unwrap();
+        let bucket_location_constraint = args.bucket_location_constraint.unwrap_or("us-east-1".to_string());
 
-        // if bucket_location_constraint.as_str() != "us-east-1" {
-        //     // Create bucket configuration with location constraint
-        //     let constraint = BucketLocationConstraint::from(bucket_location_constraint);
-        //     let cfg = CreateBucketConfiguration::builder().location_constraint(constraint).build();
-        //     bucket = bucket.create_bucket_configuration(cfg);
-        // }
+        if bucket_location_constraint.as_str() != "us-east-1" {
+            // Create bucket configuration with location constraint
+            let constraint = aws_sdk_s3::types::BucketLocationConstraint::from(bucket_location_constraint.as_str());
+            let cfg = aws_sdk_s3::types::CreateBucketConfiguration::builder().location_constraint(constraint).build();
+            bucket = bucket.create_bucket_configuration(cfg);
+        }
 
         let result = bucket.send().await.map_err(|e| {
             OrchestratorError::ResourceSetupError(format!("Failed to create S3 bucket '{}': {}", args.bucket_name, e))

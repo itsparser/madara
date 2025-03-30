@@ -75,6 +75,11 @@ description = "Setup initial resources for the orchestrator"
 command = "cargo"
 args = ["run", "--package", "orchestrator", "--", "setup"]
 
+[tasks.setup-aws]
+description = "Setup AWS resources for the orchestrator"
+command = "cargo"
+args = ["run", "--package", "orchestrator-core", "--", "setup", "--aws", "--aws-s3", "--aws-sqs", "--aws-sns", "--aws-event-bridge", "--event-bridge-type", "schedule"]
+
 [tasks.start-controller]
 description = "Start the controller component"
 command = "cargo"
