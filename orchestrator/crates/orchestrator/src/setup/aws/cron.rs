@@ -22,7 +22,7 @@ lazy_static! {
 #[async_trait]
 impl Resource for EventBridgeClient {
     type SetupResult = ();
-    type CheckResult = ();
+    type CheckResult = bool;
     type TeardownResult = ();
     type Error = ();
     type SetupArgs = CronArgs;
@@ -49,6 +49,7 @@ impl Resource for EventBridgeClient {
     }
 
     async fn setup(&self, args: Self::SetupArgs) -> OrchestratorResult<Self::SetupResult> {
+        // FIXME: this is panicking. target_queue_name is not set
         let trigger_arns = self.create_cron().await.expect("Failed to create cron");
         sleep(Duration::from_secs(15)).await;
 
@@ -58,7 +59,7 @@ impl Resource for EventBridgeClient {
         Ok(())
     }
 
-    async fn check(&self, args: Self::CheckArgs) -> OrchestratorResult<Self::CheckResult> {
+    async fn check(&self, args: &Self::CheckArgs) -> OrchestratorResult<Self::CheckResult> {
         todo!()
     }
 

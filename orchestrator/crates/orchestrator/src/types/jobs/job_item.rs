@@ -2,6 +2,7 @@ use crate::types::jobs::external_id::ExternalId;
 use crate::types::jobs::metadata::JobMetadata;
 use crate::types::jobs::types::{JobStatus, JobType};
 use chrono::{DateTime, SubsecRound, Utc};
+use mongodb::bson::serde_helpers::{chrono_datetime_as_bson_datetime, uuid_1_as_binary};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 

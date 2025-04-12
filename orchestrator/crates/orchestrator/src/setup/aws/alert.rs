@@ -11,11 +11,11 @@ use std::sync::Arc;
 #[async_trait]
 impl Resource for SNS {
     type SetupResult = ();
-    type CheckResult = ();
+    type CheckResult = bool;
     type TeardownResult = ();
     type Error = ();
     type SetupArgs = AlertArgs;
-    type CheckArgs = ();
+    type CheckArgs = String;
 
     async fn new(provider: Arc<CloudProvider>) -> OrchestratorResult<Self> {
         match provider.as_ref() {
@@ -33,6 +33,10 @@ impl Resource for SNS {
         tracing::info!("Setting up SNS topic");
         tracing::info!("Topic ARN: {}", args.endpoint);
         let topic_name = args.endpoint.clone();
+        if self.check(&topic_name).await? {
+            tracing::info!("SNS topic already exists, skipping");
+            return Ok(());
+        }
         let response = self
             .client
             .create_topic()
@@ -45,8 +49,8 @@ impl Resource for SNS {
         Ok(())
     }
 
-    async fn check(&self, args: Self::CheckArgs) -> OrchestratorResult<Self::CheckResult> {
-        Ok(())
+    async fn check(&self, topic_name: &Self::CheckArgs) -> OrchestratorResult<Self::CheckResult> {
+        Ok(self.client.get_topic_attributes().topic_arn(topic_name).send().await.is_ok())
     }
 
     async fn teardown(&self) -> OrchestratorResult<()> {

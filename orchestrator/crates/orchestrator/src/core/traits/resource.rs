@@ -2,6 +2,7 @@ use super::super::cloud::CloudProvider;
 use crate::OrchestratorResult;
 use async_trait::async_trait;
 use std::sync::Arc;
+use std::time::Duration;
 
 /// Resource trait
 ///
@@ -26,6 +27,25 @@ pub trait Resource: Send + Sync {
         Self: Sized;
 
     async fn setup(&self, args: Self::SetupArgs) -> OrchestratorResult<Self::SetupResult>;
-    async fn check(&self, args: Self::CheckArgs) -> OrchestratorResult<Self::CheckResult>;
+    async fn check(&self, args: &Self::CheckArgs) -> OrchestratorResult<bool>;
     async fn teardown(&self) -> OrchestratorResult<()>;
+    async fn poll(&self, args: Self::CheckArgs, poll_interval: u64, timeout: u64) -> bool {
+        let start_time = std::time::Instant::now();
+        let timeout_duration = Duration::from_secs(timeout);
+        let poll_duration = Duration::from_secs(poll_interval);
+
+        while start_time.elapsed() < timeout_duration {
+            match self.check(&args).await {
+                Ok(result) => {
+                    if result {
+                        return true;
+                    } else {
+                        tokio::time::sleep(poll_duration).await;
+                    }
+                }
+                Err(_) => return false,
+            }
+        }
+        false
+    }
 }

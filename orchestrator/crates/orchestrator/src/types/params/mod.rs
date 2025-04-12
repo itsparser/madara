@@ -45,6 +45,13 @@ pub struct CronArgs {
     pub trigger_policy_name: String,
 }
 
+/// Miscellaneous arguments
+#[derive(Debug, Clone)]
+pub struct MiscellaneousArgs {
+    pub poll_interval: u64,
+    pub timeout: u64,
+}
+
 impl TryFrom<RunCmd> for StorageArgs {
     type Error = OrchestratorError;
     fn try_from(run_cmd: RunCmd) -> Result<Self, Self::Error> {
@@ -58,6 +65,7 @@ impl TryFrom<RunCmd> for StorageArgs {
 impl TryFrom<SetupCmd> for StorageArgs {
     type Error = OrchestratorError;
     fn try_from(setup_cmd: SetupCmd) -> Result<Self, Self::Error> {
+        // TODO: this name format is different from previous code. Is this expected?
         Ok(Self {
             bucket_name: format!(
                 "{}-{}",
@@ -174,6 +182,22 @@ impl TryFrom<SetupCmd> for CronArgs {
                 .trigger_policy_name
                 .clone()
                 .ok_or_else(|| OrchestratorError::SetupCommandError("Trigger policy name is required".to_string()))?,
+        })
+    }
+}
+
+impl TryFrom<SetupCmd> for MiscellaneousArgs {
+    type Error = OrchestratorError;
+    fn try_from(setup_cmd: SetupCmd) -> Result<Self, Self::Error> {
+        Ok(Self {
+            timeout: setup_cmd
+                .timeout
+                .clone()
+                .ok_or_else(|| OrchestratorError::SetupCommandError("Timeout is required".to_string()))?,
+            poll_interval: setup_cmd
+                .poll_interval
+                .clone()
+                .ok_or_else(|| OrchestratorError::SetupCommandError("Poll interval is required".to_string()))?,
         })
     }
 }

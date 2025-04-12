@@ -7,6 +7,7 @@ use aws_sdk_sqs::types::QueueAttributeName;
 use aws_sdk_sqs::Client;
 use std::collections::HashMap;
 use std::sync::Arc;
+use tracing::info;
 
 #[async_trait]
 impl Resource for SQS {
@@ -16,7 +17,7 @@ impl Resource for SQS {
     type Error = ();
     type SetupArgs = QueueArgs;
 
-    type CheckArgs = (QueueArgs, String);
+    type CheckArgs = (String, QueueArgs);
 
     async fn new(cloud_provider: Arc<CloudProvider>) -> OrchestratorResult<Self> {
         match cloud_provider.as_ref() {
@@ -40,7 +41,12 @@ impl Resource for SQS {
     /// If the dead letter queue is not configured, the dead letter queue will not be created.
     async fn setup(&self, args: Self::SetupArgs) -> OrchestratorResult<Self::SetupResult> {
         for queue in QUEUES.iter() {
-            let queue_name = format!("{}_{}_{}", args.prefix.clone(), queue.name.clone(), args.suffix.clone());
+            let queue_name = format!("{}_{}_{}", args.prefix, queue.name, args.suffix);
+            let queue_url = format!("{}/{}", args.queue_base_url, queue_name);
+            if self.does_exist(queue_url).await? {
+                info!("Queue {} already exists, skipping", queue.name);
+                continue;
+            }
             let res = self.client().create_queue().queue_name(queue_name.clone()).send().await.map_err(|e| {
                 OrchestratorError::ResourceSetupError(format!(
                     "Failed to create SQS queue '{}': {}",
@@ -70,32 +76,17 @@ impl Resource for SQS {
         Ok(())
     }
 
-    async fn check(&self, _args: Self::CheckArgs) -> OrchestratorResult<Self::CheckResult> {
-        let (args, queue_name) = _args;
-        let queue_url = format!(
-            "{}/{}_{}_{}",
-            args.queue_base_url.clone(),
-            args.prefix.clone(),
-            queue_name.clone(),
-            args.suffix.clone()
-        );
-        let _res = self
-            .client()
-            .get_queue_attributes()
-            .queue_url(&queue_url)
-            .attribute_names(QueueAttributeName::All)
-            .send()
-            .await
-            .map_err(|e| {
-                OrchestratorError::ResourceSetupError(format!(
-                    "Failed to create SQS queue '{}': {}",
-                    args.queue_base_url, e
-                ))
-            })?;
-
+    async fn check(&self, args: &Self::CheckArgs) -> OrchestratorResult<Self::CheckResult> {
+        let (queue_base_url, queue_args) = args;
+        for queue in QUEUES.iter() {
+            let queue_name = format!("{}_{}_{}", queue_args.prefix, queue.name, queue_args.suffix);
+            let queue_url = format!("{}/{}", queue_base_url, queue_name);
+            if !self.does_exist(queue_url).await? {
+                return Ok(false);
+            }
+        }
         Ok(true)
     }
-
     async fn teardown(&self) -> OrchestratorResult<()> {
         let queue_url = self
             .queue_url()
@@ -108,5 +99,11 @@ impl Resource for SQS {
             .await
             .map_err(|e| OrchestratorError::ResourceError(format!("Failed to delete SQS queue: {}", e)))?;
         Ok(())
+    }
+}
+
+impl SQS {
+    async fn does_exist(&self, queue_url: String) -> OrchestratorResult<bool> {
+        Ok(self.client().get_queue_attributes().queue_url(queue_url).send().await.is_ok())
     }
 }
