@@ -46,6 +46,7 @@ impl Resource for SNS {
             .context("Failed to create topic")
             .expect("Failed to create topic");
         let topic_arn = response.topic_arn().context("Failed to create topic").expect("Topic Not found");
+        tracing::info!("SNS topic created. Topic ARN: {}", topic_arn);
         Ok(())
     }
 

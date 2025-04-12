@@ -4,9 +4,9 @@ use crate::core::traits::resource::Resource;
 use crate::types::params::StorageArgs;
 use crate::{OrchestratorError, OrchestratorResult};
 use async_trait::async_trait;
-use aws_sdk_s3::{Client as S3Client, Client, Error as S3Error};
+use aws_sdk_s3::{Client as S3Client, Error as S3Error};
 use std::sync::Arc;
-use tracing::{info, instrument, warn};
+use tracing::{info, warn};
 
 #[async_trait]
 impl Resource for AWSS3 {
