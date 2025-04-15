@@ -14,16 +14,15 @@ use crate::{
     types::params::{AlertArgs, CronArgs, QueueArgs, StorageArgs},
     OrchestratorError, OrchestratorResult,
 };
+use futures;
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::sync::Mutex;
 use std::time::Duration;
 use tracing::{error, info};
 
 /// ResourceFactory is responsible for creating resources based on their type
 pub struct ResourceFactory {
     creators: HashMap<ResourceType, Box<dyn ResourceCreator>>,
-    resource_status: Mutex<HashMap<ResourceType, bool>>,
     cloud_provider: Arc<CloudProvider>,
     queue_params: QueueArgs,
     cron_params: CronArgs,
@@ -44,10 +43,8 @@ impl ResourceFactory {
         miscellaneous_params: MiscellaneousArgs,
     ) -> Self {
         let creators = HashMap::new();
-        let resource_status = Mutex::new(HashMap::new());
         ResourceFactory {
             creators,
-            resource_status,
             cloud_provider,
             queue_params,
             cron_params,
@@ -68,7 +65,6 @@ impl ResourceFactory {
         miscellaneous_params: MiscellaneousArgs,
     ) -> Self {
         let mut creators = HashMap::new();
-        let resource_status = Mutex::new(HashMap::new());
         creators.insert(ResourceType::Storage, Box::new(S3ResourceCreator) as Box<dyn ResourceCreator>);
         creators.insert(ResourceType::Queue, Box::new(SQSResourceCreator) as Box<dyn ResourceCreator>);
         creators.insert(ResourceType::Cron, Box::new(EventBridgeResourceCreator) as Box<dyn ResourceCreator>);
@@ -76,7 +72,6 @@ impl ResourceFactory {
 
         ResourceFactory {
             creators,
-            resource_status,
             cloud_provider,
             queue_params,
             cron_params,
@@ -87,71 +82,95 @@ impl ResourceFactory {
     }
 
     pub async fn setup_resource(&mut self) -> OrchestratorResult<()> {
-        let mut is_queue_ready: bool = false;
+        let mut resource_futures = Vec::new();
+        let is_queue_ready = Arc::new(tokio::sync::RwLock::new(false));
+
         for (resource_type, creator) in self.creators.iter() {
             info!(" ⏳ Setting up resource: {:?}", resource_type);
             let mut resource = creator.create_resource(self.cloud_provider.clone()).await?;
-            match resource_type {
-                ResourceType::Storage => {
-                    let rs = resource.downcast_mut::<AWSS3>().unwrap();
-                    rs.setup(self.storage_params.clone()).await?;
-                    let is_bucket_ready = rs
-                        .poll(
-                            self.storage_params.bucket_name.clone(),
-                            self.miscellaneous_params.poll_interval,
-                            self.miscellaneous_params.timeout,
-                        )
-                        .await;
-                    self.update_resource_status(ResourceType::Storage, is_bucket_ready)?;
-                }
-                ResourceType::Queue => {
-                    let rs = resource.downcast_mut::<SQS>().unwrap();
-                    rs.setup(self.queue_params.clone()).await?;
-                    is_queue_ready = rs
-                        .poll(
-                            (self.queue_params.queue_base_url.clone(), self.queue_params.clone()),
-                            self.miscellaneous_params.poll_interval,
-                            self.miscellaneous_params.timeout,
-                        )
-                        .await;
-                    self.update_resource_status(ResourceType::Queue, is_queue_ready)?;
-                }
-                ResourceType::Notification => {
-                    let rs = resource.downcast_mut::<SNS>().unwrap();
-                    rs.setup(self.alert_params.clone()).await?;
-                    let is_sns_ready = rs
-                        .poll(
-                            self.alert_params.endpoint.clone(),
-                            self.miscellaneous_params.poll_interval,
-                            self.miscellaneous_params.timeout,
-                        )
-                        .await;
-                    self.update_resource_status(ResourceType::Notification, is_sns_ready)?;
-                }
-                ResourceType::Cron => {
-                    let start_time = std::time::Instant::now();
-                    let timeout_duration = Duration::from_secs(self.miscellaneous_params.timeout);
-                    let poll_duration = Duration::from_secs(self.miscellaneous_params.poll_interval);
-                    let mut can_setup_cron = false;
-                    while start_time.elapsed() < timeout_duration {
-                        if is_queue_ready {
-                            can_setup_cron = true;
-                            break;
-                        } else {
-                            tokio::time::sleep(poll_duration).await;
+
+            let resource_type_clone = resource_type;
+            let queue_params_clone = self.queue_params.clone();
+            let cron_params_clone = self.cron_params.clone();
+            let storage_params_clone = self.storage_params.clone();
+            let alert_params_clone = self.alert_params.clone();
+            let miscellaneous_params_clone = self.miscellaneous_params.clone();
+            let is_queue_ready_clone = is_queue_ready.clone();
+
+            let resource_future = async move {
+                match resource_type_clone {
+                    ResourceType::Storage => {
+                        let rs = resource.downcast_mut::<AWSS3>().unwrap();
+                        rs.setup(storage_params_clone.clone()).await?;
+                        let is_bucket_ready = rs
+                            .poll(
+                                storage_params_clone.bucket_name.clone(),
+                                miscellaneous_params_clone.poll_interval,
+                                miscellaneous_params_clone.timeout,
+                            )
+                            .await;
+                        Ok::<(&ResourceType, bool), OrchestratorError>((resource_type_clone, is_bucket_ready))
+                    }
+                    ResourceType::Queue => {
+                        let rs = resource.downcast_mut::<SQS>().unwrap();
+                        rs.setup(queue_params_clone.clone()).await?;
+                        let queue_ready = rs
+                            .poll(
+                                (queue_params_clone.queue_base_url.clone(), queue_params_clone.clone()),
+                                miscellaneous_params_clone.poll_interval,
+                                miscellaneous_params_clone.timeout,
+                            )
+                            .await;
+                        *is_queue_ready_clone.write().await = queue_ready;
+                        Ok((resource_type_clone, queue_ready))
+                    }
+                    ResourceType::Notification => {
+                        let rs = resource.downcast_mut::<SNS>().unwrap();
+                        rs.setup(alert_params_clone.clone()).await?;
+                        let is_sns_ready = rs
+                            .poll(
+                                alert_params_clone.endpoint.clone(),
+                                miscellaneous_params_clone.poll_interval,
+                                miscellaneous_params_clone.timeout,
+                            )
+                            .await;
+                        Ok((resource_type_clone, is_sns_ready))
+                    }
+                    ResourceType::Cron => {
+                        let start_time = std::time::Instant::now();
+                        let timeout_duration = Duration::from_secs(miscellaneous_params_clone.timeout);
+                        let poll_duration = Duration::from_secs(miscellaneous_params_clone.poll_interval);
+                        let mut can_setup_cron = false;
+                        while start_time.elapsed() < timeout_duration {
+                            if *is_queue_ready_clone.read().await {
+                                can_setup_cron = true;
+                                break;
+                            } else {
+                                info!(" ⏳ Waiting for queues to be ready before setting up cron");
+                                tokio::time::sleep(poll_duration).await;
+                            }
                         }
-                    }
-                    if can_setup_cron {
-                        let rs = resource.downcast_mut::<EventBridgeClient>().unwrap();
-                        rs.setup(self.cron_params.clone()).await?;
-                    } else {
-                        error!(" ❌ Failed to setup cron because queues are not ready yet");
+                        if can_setup_cron {
+                            let rs = resource.downcast_mut::<EventBridgeClient>().unwrap();
+                            rs.setup(cron_params_clone.clone()).await?;
+                        } else {
+                            error!(" ❌ Failed to setup cron because queues are not ready yet");
+                        }
+
+                        Ok((resource_type_clone, true))
                     }
                 }
-                _ => {}
-            }
-            info!(" ✅ Resource setup completed: {:?}", resource_type);
+            };
+
+            resource_futures.push(resource_future);
         }
+
+        let results = futures::future::join_all(resource_futures).await;
+        // Checking for errors
+        for result in results {
+            let (_, _) = result?;
+        }
+
         Ok(())
     }
 
@@ -184,23 +203,6 @@ impl ResourceFactory {
         match ResourceType::from_str(resource_type) {
             Some(rt) => self.create_resource(rt, cloud_provider).await,
             None => Err(OrchestratorError::ResourceError(format!("Unknown resource type: {}", resource_type))),
-        }
-    }
-
-    pub fn update_resource_status(&self, resource_type: ResourceType, is_ready: bool) -> OrchestratorResult<()> {
-        match self.resource_status.lock() {
-            Ok(mut status) => {
-                status.insert(resource_type, is_ready);
-                Ok(())
-            }
-            Err(_) => Err(OrchestratorError::ResourceError("Failed to acquire lock on resource_status".to_string())),
-        }
-    }
-
-    pub fn get_resource_status(&self, resource_type: ResourceType) -> OrchestratorResult<bool> {
-        match self.resource_status.lock() {
-            Ok(status) => Ok(status.get(&resource_type).cloned().unwrap_or(false)),
-            Err(_) => Err(OrchestratorError::ResourceError("Failed to acquire lock on resource_status".to_string())),
         }
     }
 }

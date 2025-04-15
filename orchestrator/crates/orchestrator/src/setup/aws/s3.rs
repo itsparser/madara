@@ -40,7 +40,7 @@ impl Resource for AWSS3 {
         for bucket in existing_buckets.buckets() {
             if let Some(name) = &bucket.name {
                 if name == &args.bucket_name {
-                    warn!("S3 bucket '{}' already exists", args.bucket_name);
+                    warn!(" ℹ️  S3 bucket '{}' already exists", args.bucket_name);
                     return Ok(S3BucketSetupResult { name: args.bucket_name, location: None });
                 }
             }

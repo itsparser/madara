@@ -44,7 +44,7 @@ impl Resource for SQS {
             let queue_name = format!("{}_{}_{}", args.prefix, queue.name, args.suffix);
             let queue_url = format!("{}/{}", args.queue_base_url, queue_name);
             if self.does_exist(queue_url).await? {
-                info!("Queue {} already exists, skipping", queue.name);
+                info!(" ℹ️  Queue {} already exists, skipping", queue.name);
                 continue;
             }
             let res = self.client().create_queue().queue_name(queue_name.clone()).send().await.map_err(|e| {

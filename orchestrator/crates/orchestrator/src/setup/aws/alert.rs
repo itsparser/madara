@@ -34,7 +34,7 @@ impl Resource for SNS {
         tracing::info!("Topic ARN: {}", args.endpoint);
         let topic_name = args.endpoint.clone();
         if self.check(&topic_name).await? {
-            tracing::info!("SNS topic already exists, skipping");
+            tracing::info!(" ℹ️  SNS topic already exists, skipping");
             return Ok(());
         }
         let response = self

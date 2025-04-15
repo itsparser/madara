@@ -63,7 +63,7 @@ impl Resource for EventBridgeClient {
 
         for trigger in WORKER_TRIGGERS.iter() {
             if self.check(&(args.event_bridge_type.clone(), trigger.clone(), args.trigger_rule_name.clone())).await? {
-                tracing::info!("Event Bridge {trigger} already exists, skipping");
+                tracing::info!(" ℹ️  Event Bridge {trigger} already exists, skipping");
             } else {
                 self.add_cron_target_queue(
                     trigger,
