@@ -17,6 +17,7 @@ use crate::{
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::time::Duration;
 use tracing::{error, info};
 
 /// ResourceFactory is responsible for creating resources based on their type
@@ -86,6 +87,7 @@ impl ResourceFactory {
     }
 
     pub async fn setup_resource(&mut self) -> OrchestratorResult<()> {
+        let mut is_queue_ready: bool = false;
         for (resource_type, creator) in self.creators.iter() {
             info!(" ⏳ Setting up resource: {:?}", resource_type);
             let mut resource = creator.create_resource(self.cloud_provider.clone()).await?;
@@ -105,7 +107,7 @@ impl ResourceFactory {
                 ResourceType::Queue => {
                     let rs = resource.downcast_mut::<SQS>().unwrap();
                     rs.setup(self.queue_params.clone()).await?;
-                    let is_queue_ready = rs
+                    is_queue_ready = rs
                         .poll(
                             (self.queue_params.queue_base_url.clone(), self.queue_params.clone()),
                             self.miscellaneous_params.poll_interval,
@@ -127,7 +129,19 @@ impl ResourceFactory {
                     self.update_resource_status(ResourceType::Notification, is_sns_ready)?;
                 }
                 ResourceType::Cron => {
-                    if self.get_resource_status(ResourceType::Queue)? {
+                    let start_time = std::time::Instant::now();
+                    let timeout_duration = Duration::from_secs(self.miscellaneous_params.timeout);
+                    let poll_duration = Duration::from_secs(self.miscellaneous_params.poll_interval);
+                    let mut can_setup_cron = false;
+                    while start_time.elapsed() < timeout_duration {
+                        if is_queue_ready {
+                            can_setup_cron = true;
+                            break;
+                        } else {
+                            tokio::time::sleep(poll_duration).await;
+                        }
+                    }
+                    if can_setup_cron {
                         let rs = resource.downcast_mut::<EventBridgeClient>().unwrap();
                         rs.setup(self.cron_params.clone()).await?;
                     } else {
