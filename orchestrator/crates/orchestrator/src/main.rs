@@ -17,7 +17,7 @@ static A: jemallocator::Jemalloc = jemallocator::Jemalloc;
 /// Start the server
 #[tokio::main]
 // not sure why clippy gives this error on the latest rust
-// version but have added it for now
+// version but have added it for
 #[allow(clippy::needless_return)]
 async fn main() {
     dotenv().ok();

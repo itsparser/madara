@@ -49,9 +49,9 @@ impl JobFactory {
     /// - We return this mocked job whenever a function calls `get_job_handler`
     /// - Making it an Arc allows us to return the same MockJob in multiple calls to
     ///   `get_job_handler`. This is needed because `MockJob` doesn't implement Clone
-    pub async fn get_job_handler(job_type: &JobType) -> Arc<Box<dyn JobHandlerTrait>> {
-        let job: Box<dyn JobHandlerTrait> = match job_type {
-            JobType::DataSubmission => Box::new(DAJobHandler),
+    pub async fn get_job_handler(job_type: &JobType, network: string) -> Arc<Box<dyn JobHandlerTrait>> {
+        let job: Box<dyn JobHandlerTrait> = match (job_type, network) {
+            (JobType::DataSubmission, "l2".to_string) => Box::new(DAJobHandler),
             JobType::SnosRun => Box::new(SnosJobHandler),
             JobType::ProofCreation => Box::new(ProvingJobHandler),
             JobType::StateTransition => Box::new(StateUpdateJobHandler),
