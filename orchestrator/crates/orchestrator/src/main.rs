@@ -38,7 +38,7 @@ async fn main() {
 
 async fn run_orchestrator(run_cmd: &RunCmd) -> OrchestratorResult<()> {
     let config = OTELConfig::try_from(run_cmd.instrumentation_args.clone())?;
-    let orchestrator_instrumentation = OrchestratorInstrumentation::setup(&config)?;
+    let instrumentation = OrchestratorInstrumentation::new(&config)?;
     info!("Starting orchestrator service");
 
     let config = Arc::new(Config::new(run_cmd).await?);
@@ -56,7 +56,7 @@ async fn run_orchestrator(run_cmd: &RunCmd) -> OrchestratorResult<()> {
     tokio::signal::ctrl_c().await.expect("Failed to listen for ctrl+c");
 
     // Analytics Shutdown
-    orchestrator_instrumentation.shutdown()?;
+    instrumentation.shutdown()?;
     info!("Orchestrator service shutting down");
     Ok(())
 }

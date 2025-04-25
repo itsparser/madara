@@ -123,10 +123,10 @@ pub struct RunCmd {
 
     // Settlement Layer
     #[clap(flatten)]
-    pub ethereum_settle_args: settlement::ethereum::EthereumSettlementCliArgs,
+    pub ethereum_settlement_args: settlement::ethereum::EthereumSettlementCliArgs,
 
     #[clap(flatten)]
-    pub starknet_settle_args: settlement::starknet::StarknetSettlementCliArgs,
+    pub starknet_settlement_args: settlement::starknet::StarknetSettlementCliArgs,
 
     // Prover
     #[clap(flatten)]
