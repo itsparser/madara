@@ -12,7 +12,7 @@ use crate::{
 };
 use std::sync::Arc;
 use std::time::Duration;
-use tracing::info;
+use tracing::{debug, info};
 
 /// ResourceFactory is responsible for creating resources based on their type
 pub struct ResourceFactory {
@@ -72,11 +72,11 @@ impl ResourceFactory {
     /// TODO > Refactor this function to use a more generic approach when we add more cloud providers
     pub async fn setup_resource(&self) -> OrchestratorResult<()> {
         let mut resource_futures = Vec::new();
+        let is_queue_ready = Arc::new(tokio::sync::RwLock::new(false));
         // Use ordered_types to maintain creation order
         for (resource_type, creator) in self.ordered_types.iter() {
             info!(" ⏳ Setting up resource: {:?}", resource_type);
             let mut resource = creator.create_resource_client(self.cloud_provider.clone()).await?;
-            let is_queue_ready = Arc::new(tokio::sync::RwLock::new(false));
             let is_queue_ready_clone = is_queue_ready.clone();
 
             let storage_params = self.storage_params.clone();
@@ -131,6 +131,7 @@ impl ResourceFactory {
                                         .await;
                                     break;
                                 } else {
+                                    info!(" Current Status of the Queue Creation is: {:?}", *is_queue_ready_clone.read().await);
                                     info!(" ⏳ Waiting for queues to be ready before setting up cron");
                                     tokio::time::sleep(poll_duration).await;
                                 }

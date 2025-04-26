@@ -12,7 +12,6 @@ use std::time::{Duration, Instant};
 /// to work with a variety of resources without needing to know the specific details of each implementation.
 /// The trait is also used to define the interface for mocking the resource, allowing the Orchestrator to
 /// be tested in isolation without needing to set up a real resource.
-// #[automock] // TODO: uncomment this when automock is fixed
 #[async_trait]
 pub trait Resource: Send + Sync {
     type SetupResult: Send + Sync;

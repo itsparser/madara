@@ -9,7 +9,7 @@ pub struct SNOSCliArgs {
     pub rpc_for_snos: Url,
 }
 
-#[derive(Debug, Clone)]
-pub struct SNOSParams {
-    pub rpc_for_snos: Url,
-}
+// #[derive(Debug, Clone)]
+// pub struct SNOSParams {
+//     pub rpc_for_snos: Url,
+// }

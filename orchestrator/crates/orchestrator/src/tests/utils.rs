@@ -1,15 +1,16 @@
 use chrono::{SubsecRound, Utc};
 use uuid::Uuid;
 
-use crate::tests::constant::{
-    BLOB_DATA_FILE_NAME, CAIRO_PIE_FILE_NAME, PROGRAM_OUTPUT_FILE_NAME, SNOS_OUTPUT_FILE_NAME,
-};
+// use crate::constants::{BLOB_DATA_FILE_NAME, CAIRO_PIE_FILE_NAME, PROGRAM_OUTPUT_FILE_NAME, SNOS_OUTPUT_FILE_NAME};
+// use crate::jobs::metadata::{
+//     CommonMetadata, DaMetadata, JobMetadata, JobSpecificMetadata, ProvingInputTypePath, ProvingMetadata, SnosMetadata,
+//     StateUpdateMetadata,
+// };
+// use crate::jobs::types::{ExternalId, JobItem, JobStatus, JobType};
+use crate::types::constant::{BLOB_DATA_FILE_NAME, CAIRO_PIE_FILE_NAME, PROGRAM_OUTPUT_FILE_NAME, SNOS_OUTPUT_FILE_NAME};
 use crate::types::jobs::external_id::ExternalId;
 use crate::types::jobs::job_item::JobItem;
-use crate::types::jobs::metadata::{
-    CommonMetadata, DaMetadata, JobMetadata, JobSpecificMetadata, ProvingInputType, ProvingMetadata, SnosMetadata,
-    StateUpdateMetadata,
-};
+use crate::types::jobs::metadata::{CommonMetadata, DaMetadata, JobMetadata, JobSpecificMetadata, ProvingInputType, ProvingMetadata, SnosMetadata, StateUpdateMetadata};
 use crate::types::jobs::types::{JobStatus, JobType};
 // Test Util Functions
 // ==========================================
@@ -31,11 +32,10 @@ pub fn build_job_item(job_type: JobType, job_status: JobStatus, internal_id: u64
             common: CommonMetadata::default(),
             specific: JobSpecificMetadata::Snos(SnosMetadata {
                 block_number: internal_id,
-                full_output: false,
                 cairo_pie_path: Some(format!("{}/{}", internal_id, CAIRO_PIE_FILE_NAME)),
                 snos_output_path: Some(format!("{}/{}", internal_id, SNOS_OUTPUT_FILE_NAME)),
                 program_output_path: Some(format!("{}/{}", internal_id, PROGRAM_OUTPUT_FILE_NAME)),
-                snos_fact: None,
+                ..Default::default()
             }),
         },
         JobType::ProofCreation => JobMetadata {
@@ -43,8 +43,7 @@ pub fn build_job_item(job_type: JobType, job_status: JobStatus, internal_id: u64
             specific: JobSpecificMetadata::Proving(ProvingMetadata {
                 block_number: internal_id,
                 input_path: Some(ProvingInputType::CairoPie(format!("{}/{}", internal_id, CAIRO_PIE_FILE_NAME))),
-                ensure_on_chain_registration: None,
-                download_proof: None,
+                ..Default::default()
             }),
         },
         JobType::DataSubmission => JobMetadata {

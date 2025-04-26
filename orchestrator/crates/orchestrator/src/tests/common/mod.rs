@@ -2,23 +2,24 @@ pub mod constants;
 
 use std::sync::Arc;
 
-use crate::cli::alert::AlertValidatedArgs;
-use crate::cli::database::DatabaseValidatedArgs;
-use crate::cli::queue::QueueValidatedArgs;
+// use crate::cli::alert::AlertValidatedArgs;
+// use crate::cli::database::DatabaseValidatedArgs;
+// use crate::cli::queue::QueueValidatedArgs;
 use crate::cli::storage::StorageValidatedArgs;
-use crate::config::ProviderConfig;
-use crate::data_storage::aws_s3::{AWSS3ValidatedArgs, AWSS3};
-use crate::data_storage::DataStorage;
-use crate::database::mongodb::MongoDb;
-use crate::jobs::metadata::{CommonMetadata, DaMetadata, JobMetadata, JobSpecificMetadata};
-use crate::jobs::types::JobStatus::Created;
-use crate::jobs::types::JobType::DataSubmission;
-use crate::jobs::types::{ExternalId, JobItem};
-use crate::queue::QueueType;
+// use crate::config::ProviderConfig;
+// use crate::data_storage::aws_s3::{AWSS3ValidatedArgs, AWSS3};
+// use crate::data_storage::DataStorage;
+// use crate::database::mongodb::MongoDb;
+// use crate::jobs::metadata::{CommonMetadata, DaMetadata, JobMetadata, JobSpecificMetadata};
+// use crate::jobs::types::JobStatus::Created;
+// use crate::jobs::types::JobType::DataSubmission;
+// use crate::jobs::types::{ExternalId, JobItem};
+// use crate::queue::QueueType;
 use crate::types::jobs::external_id::ExternalId;
 use crate::types::jobs::job_item::JobItem;
 use crate::types::jobs::metadata::{CommonMetadata, DaMetadata, JobMetadata, JobSpecificMetadata};
-use crate::types::jobs::types::{JobStatus, JobType};
+use crate::types::jobs::types::JobStatus::Created;
+use crate::types::jobs::types::JobType::DataSubmission;
 use aws_config::provider_config::ProviderConfig;
 use aws_config::SdkConfig;
 use aws_sdk_s3::Client as S3Client;
@@ -36,8 +37,8 @@ pub fn default_job_item() -> JobItem {
     JobItem {
         id: Uuid::new_v4(),
         internal_id: String::from("0"),
-        job_type: JobType::DataSubmission,
-        status: JobStatus::Created,
+        job_type: DataSubmission,
+        status: Created,
         external_id: ExternalId::String("0".to_string().into_boxed_str()),
         metadata: JobMetadata {
             common: CommonMetadata::default(),
@@ -50,7 +51,9 @@ pub fn default_job_item() -> JobItem {
 }
 
 #[fixture]
-pub fn custom_job_item(default_job_item: JobItem, #[default(String::from("0"))] internal_id: String) -> JobItem {
+pub fn custom_job_item(default_job_item: JobItem, #[default(
+    String::from("0")
+)] internal_id: String) -> JobItem {
     let mut job_item = default_job_item;
     job_item.internal_id = internal_id.clone();
 

@@ -288,8 +288,7 @@ impl DatabaseClient for MongoDbClient {
         let job_a_type_bson = Bson::String(format!("{:?}", job_a_type));
         let job_a_status_bson = Bson::String(format!("{:?}", job_a_status));
         let job_b_type_bson = Bson::String(format!("{:?}", job_b_type));
-
-        // TODO :
+        
         // implement job_b_status here in the pipeline
 
         // Construct the initial pipeline

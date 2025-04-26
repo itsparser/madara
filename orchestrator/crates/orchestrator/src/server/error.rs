@@ -9,6 +9,8 @@ pub type ApiServiceError = JobRouteError;
 pub type ApiServiceResult<T> = Result<T, JobRouteError>;
 
 /// TODO: Make sure the response should be in json format and not plain text when throwing error
+///     or in other works use unified response format across the application
+///     so that it will be easy for the client to parse the response
 
 /// Represents errors that can occur during job route handling operations.
 ///
