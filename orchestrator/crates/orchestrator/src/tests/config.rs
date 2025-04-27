@@ -27,9 +27,15 @@ use crate::cli::prover::ProverValidatedArgs;
 use crate::cli::provider::AWSConfigValidatedArgs;
 use crate::cli::queue::QueueValidatedArgs;
 use crate::cli::settlement::SettlementValidatedArgs;
-use crate::cli::snos::SNOSParams;
 use crate::cli::storage::StorageValidatedArgs;
 use crate::config::{get_aws_config, Config, OrchestratorParams, ProviderConfig, ServiceParams};
+use crate::core::client::database::MockDatabaseClient;
+use crate::core::client::queue::MockQueueClient;
+use crate::core::client::storage::MockStorageClient;
+use crate::core::client::AlertClient;
+use crate::core::cloud::CloudProvider;
+use crate::core::config::{Config, ConfigParam};
+use crate::core::{DatabaseClient, QueueClient, StorageClient};
 use crate::data_storage::aws_s3::AWSS3ValidatedArgs;
 use crate::data_storage::{DataStorage, MockDataStorage};
 use crate::database::mongodb::MongoDBValidatedArgs;
@@ -40,7 +46,15 @@ use crate::queue::{MockQueueProvider, QueueProvider};
 use crate::routes::{get_server_url, setup_server, ServerParams};
 use crate::telemetry::InstrumentationParams;
 use crate::tests::common::{create_queues, create_sns_arn, drop_database};
-
+use crate::types::params::cloud_provider::AWSCredentials;
+use crate::types::params::da::DAConfig;
+use crate::types::params::database::DatabaseArgs;
+use crate::types::params::prover::ProverConfig;
+use crate::types::params::service::{ServerParams, ServiceParams};
+use crate::types::params::settlement::SettlementConfig;
+use crate::types::params::snos::SNOSParams;
+use crate::types::params::{AlertArgs, QueueArgs, StorageArgs};
+use crate::utils::helpers::ProcessingLocks;
 // Inspiration : https://rust-unofficial.github.io/patterns/patterns/creational/builder.html
 // TestConfigBuilder allows to heavily customise the global configs based on the test's requirement.
 // Eg: We want to mock only the da client and leave rest to be as it is, use mock_da_client.
@@ -53,10 +67,10 @@ pub enum MockType {
     ProverClient(Box<dyn ProverClient>),
     SettlementClient(Box<dyn SettlementClient>),
 
-    Alerts(Box<dyn Alerts>),
-    Database(Box<dyn Database>),
-    Queue(Box<dyn QueueProvider>),
-    Storage(Box<dyn DataStorage>),
+    Alerts(Box<dyn AlertClient>),
+    Database(Box<dyn DatabaseClient>),
+    Queue(Box<dyn QueueClient>),
+    Storage(Box<dyn StorageClient>),
 }
 
 // By default, everything is on Dummy.
@@ -88,10 +102,10 @@ macro_rules! impl_mock_from {
 
 impl_mock_from! {
     MockProverClient => ProverClient,
-    MockDatabase => Database,
+    MockDatabaseClient => Database,
     MockDaClient => DaClient,
-    MockQueueProvider => Queue,
-    MockDataStorage => Storage,
+    MockQueueClient => Queue,
+    MockStorageClient => Storage,
     MockSettlementClient => SettlementClient
 }
 
@@ -129,7 +143,7 @@ impl Default for TestConfigBuilder {
 pub struct TestConfigBuilderReturns {
     pub starknet_server: Option<MockServer>,
     pub config: Arc<Config>,
-    pub provider_config: Arc<ProviderConfig>,
+    pub provider_config: Arc<CloudProvider>,
     pub api_server_address: Option<SocketAddr>,
 }
 
@@ -204,7 +218,7 @@ impl TestConfigBuilder {
 
         let params = get_env_params();
 
-        let provider_config = Arc::new(ProviderConfig::AWS(Box::new(get_aws_config(&params.aws_params).await)));
+        let provider_config = Arc::new(CloudProvider::AWS(Box::new(get_aws_config(&params.aws_params).await)));
 
         let TestConfigBuilder {
             starknet_rpc_url_type,
@@ -317,6 +331,8 @@ pub mod implement_client {
         build_alert_client, build_da_client, build_database_client, build_prover_service, build_queue_client,
         build_settlement_client, ProviderConfig,
     };
+    use crate::core::client::database::MockDatabaseClient;
+    use crate::core::DatabaseClient;
     use crate::data_storage::{DataStorage, MockDataStorage};
     use crate::database::{Database, MockDatabase};
     use crate::queue::{MockQueueProvider, QueueProvider};
@@ -418,11 +434,11 @@ pub mod implement_client {
     pub(crate) async fn init_database(
         service: ConfigType,
         database_params: &DatabaseValidatedArgs,
-    ) -> Box<dyn Database> {
+    ) -> Box<dyn DatabaseClient> {
         match service {
             ConfigType::Mock(client) => client.into(),
             ConfigType::Actual => build_database_client(database_params).await,
-            ConfigType::Dummy => Box::new(MockDatabase::new()),
+            ConfigType::Dummy => Box::new(MockDatabaseClient::new()),
         }
     }
 
@@ -468,64 +484,63 @@ pub mod implement_client {
 }
 
 pub struct EnvParams {
-    aws_params: AWSConfigValidatedArgs,
-    alert_params: AlertValidatedArgs,
-    queue_params: QueueValidatedArgs,
-    storage_params: StorageValidatedArgs,
-    db_params: DatabaseValidatedArgs,
-    da_params: DaValidatedArgs,
-    settlement_params: SettlementValidatedArgs,
-    prover_params: ProverValidatedArgs,
-    orchestrator_params: OrchestratorParams,
+    aws_params: AWSCredentials,
+    alert_params: AlertArgs,
+    queue_params: QueueArgs,
+    storage_params: StorageArgs,
+    db_params: DatabaseArgs,
+    da_params: DAConfig,
+    settlement_params: SettlementConfig,
+    prover_params: ProverConfig,
+    orchestrator_params: ConfigParam,
     #[allow(dead_code)]
     instrumentation_params: InstrumentationParams,
 }
 
 fn get_env_params() -> EnvParams {
-    let db_params = DatabaseValidatedArgs::MongoDB(MongoDBValidatedArgs {
-        connection_url: Url::parse(&get_env_var_or_panic("MADARA_ORCHESTRATOR_MONGODB_CONNECTION_URL"))
-            .expect("Invalid MongoDB connection URL"),
+    let db_params = DatabaseArgs {
+        connection_uri: get_env_var_or_panic("MADARA_ORCHESTRATOR_MONGODB_CONNECTION_URL"),
         database_name: get_env_var_or_panic("MADARA_ORCHESTRATOR_DATABASE_NAME"),
-    });
-
-    let storage_params = StorageValidatedArgs::AWSS3(AWSS3ValidatedArgs {
-        bucket_name: get_env_var_or_panic("MADARA_ORCHESTRATOR_AWS_S3_BUCKET_NAME"),
-    });
-
-    let queue_params = QueueValidatedArgs::AWSSQS(AWSSQSValidatedArgs {
-        queue_base_url: Url::parse(&get_env_var_or_panic("MADARA_ORCHESTRATOR_SQS_BASE_QUEUE_URL"))
-            .expect("Invalid queue base URL"),
-        sqs_prefix: get_env_var_or_panic("MADARA_ORCHESTRATOR_SQS_PREFIX"),
-        sqs_suffix: get_env_var_or_panic("MADARA_ORCHESTRATOR_SQS_SUFFIX"),
-    });
-
-    let aws_params = AWSConfigValidatedArgs {
-        aws_access_key_id: get_env_var_or_panic("AWS_ACCESS_KEY_ID"),
-        aws_secret_access_key: get_env_var_or_panic("AWS_SECRET_ACCESS_KEY"),
-        aws_region: get_env_var_or_panic("AWS_REGION"),
     };
 
-    let da_params = DaValidatedArgs::Ethereum(EthereumDaValidatedArgs {
+    let storage_params = StorageArgs {
+        bucket_name: get_env_var_or_panic("MADARA_ORCHESTRATOR_AWS_S3_BUCKET_NAME"),
+        bucket_location_constraint: None,
+    };
+
+    let queue_params = QueueArgs {
+        queue_base_url: get_env_var_or_panic("MADARA_ORCHESTRATOR_SQS_BASE_QUEUE_URL"),
+        prefix: get_env_var_or_panic("MADARA_ORCHESTRATOR_SQS_PREFIX"),
+        suffix: get_env_var_or_panic("MADARA_ORCHESTRATOR_SQS_SUFFIX"),
+    };
+
+    let aws_params = AWSCredentials {
+        access_key_id: get_env_var_or_panic("AWS_ACCESS_KEY_ID"),
+        secret_access_key: get_env_var_or_panic("AWS_SECRET_ACCESS_KEY"),
+        region: get_env_var_or_panic("AWS_REGION"),
+    };
+
+    let da_params = DAConfig::Ethereum(EthereumDaValidatedArgs {
         ethereum_da_rpc_url: Url::parse(&get_env_var_or_panic("MADARA_ORCHESTRATOR_ETHEREUM_DA_RPC_URL"))
             .expect("Failed to parse MADARA_ORCHESTRATOR_ETHEREUM_RPC_URL"),
     });
 
-    let alert_params = AlertValidatedArgs::AWSSNS(AWSSNSValidatedArgs {
-        topic_arn: get_env_var_or_panic("MADARA_ORCHESTRATOR_AWS_SNS_ARN"),
-    });
+    let alert_params = AlertArgs {
+        endpoint: get_env_var_or_panic("MADARA_ORCHESTRATOR_AWS_SNS_ARN"),
+    };
 
-    let settlement_params = SettlementValidatedArgs::Ethereum(EthereumSettlementValidatedArgs {
+    let settlement_params = SettlementConfig::Ethereum(EthereumSettlementValidatedArgs {
         ethereum_rpc_url: Url::parse(&get_env_var_or_panic("MADARA_ORCHESTRATOR_ETHEREUM_SETTLEMENT_RPC_URL"))
             .expect("Failed to parse MADARA_ORCHESTRATOR_ETHEREUM_RPC_URL"),
         ethereum_private_key: get_env_var_or_panic("MADARA_ORCHESTRATOR_ETHEREUM_PRIVATE_KEY"),
         l1_core_contract_address: Address::from_str(&get_env_var_or_panic(
             "MADARA_ORCHESTRATOR_L1_CORE_CONTRACT_ADDRESS",
         ))
-        .expect("Invalid L1 core contract address"),
+            .expect("Invalid L1 core contract address"),
         starknet_operator_address: Address::from_str(&get_env_var_or_panic(
             "MADARA_ORCHESTRATOR_STARKNET_OPERATOR_ADDRESS",
         ))
-        .expect("Invalid Starknet operator address"),
+            .expect("Invalid Starknet operator address"),
     });
 
     let snos_config = SNOSParams {
@@ -563,7 +578,7 @@ fn get_env_params() -> EnvParams {
             .expect("Failed to parse MADARA_ORCHESTRATOR_PORT"),
     };
 
-    let orchestrator_params = OrchestratorParams {
+    let orchestrator_params = ConfigParam {
         madara_rpc_url: Url::parse(&get_env_var_or_panic("MADARA_ORCHESTRATOR_MADARA_RPC_URL"))
             .expect("Failed to parse MADARA_ORCHESTRATOR_MADARA_RPC_URL"),
         snos_config,
@@ -580,7 +595,7 @@ fn get_env_params() -> EnvParams {
             .map(|url| Url::parse(&url).expect("Failed to parse MADARA_ORCHESTRATOR_OTEL_COLLECTOR_ENDPOINT")),
     };
 
-    let prover_params = ProverValidatedArgs::Sharp(SharpValidatedArgs {
+    let prover_params = ProverConfig::Sharp(SharpValidatedArgs {
         sharp_customer_id: get_env_var_or_panic("MADARA_ORCHESTRATOR_SHARP_CUSTOMER_ID"),
         sharp_url: Url::parse(&get_env_var_or_panic("MADARA_ORCHESTRATOR_SHARP_URL"))
             .expect("Failed to parse MADARA_ORCHESTRATOR_SHARP_URL"),
