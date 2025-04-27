@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use aws_config::SdkConfig;
 use aws_sdk_s3::Client;
 use bytes::Bytes;
-use std::sync::Arc;
+use std::sync::Arc;git
 
 #[derive(Clone, Debug)]
 pub struct AWSS3 {
@@ -35,10 +35,6 @@ impl AWSS3 {
     }
 }
 
-pub struct S3BucketSetupResult {
-    pub name: String,
-    pub location: Option<String>,
-}
 
 #[async_trait]
 impl StorageClient for AWSS3 {

@@ -1,4 +1,4 @@
-use crate::core::client::storage::s3::{S3BucketSetupResult, AWSS3};
+use crate::core::client::storage::s3::AWSS3;
 use crate::core::cloud::CloudProvider;
 use crate::core::traits::resource::Resource;
 use crate::types::params::StorageArgs;
@@ -7,6 +7,12 @@ use async_trait::async_trait;
 use aws_sdk_s3::{Client as S3Client, Error as S3Error};
 use std::sync::Arc;
 use tracing::{info, warn};
+
+
+pub struct S3BucketSetupResult {
+    pub name: String,
+    pub region: Option<String>,
+}
 
 #[async_trait]
 impl Resource for AWSS3 {
@@ -40,7 +46,7 @@ impl Resource for AWSS3 {
         // If it does, return the existing bucket name and location
         if self.check_if_exists(args.bucket_name.clone()).await? {
             warn!(" ℹ️  S3 bucket '{}' already exists", args.bucket_name);
-            return Ok(S3BucketSetupResult { name: args.bucket_name, location: None });
+            return Ok(S3BucketSetupResult { name: args.bucket_name, region: None });
         }
 
         let existing_buckets = &self
@@ -54,7 +60,7 @@ impl Resource for AWSS3 {
             if let Some(name) = &bucket.name {
                 if name == &args.bucket_name {
                     warn!(" ℹ️  S3 bucket '{}' already exists", args.bucket_name);
-                    return Ok(S3BucketSetupResult { name: args.bucket_name, location: None });
+                    return Ok(S3BucketSetupResult { name: args.bucket_name, region: None });
                 }
             }
         }
@@ -75,7 +81,7 @@ impl Resource for AWSS3 {
         let result = bucket.send().await.map_err(|e| {
             OrchestratorError::ResourceSetupError(format!("Failed to create S3 bucket '{}': {:?}", args.bucket_name, e))
         })?;
-        Ok(S3BucketSetupResult { name: args.bucket_name, location: result.location })
+        Ok(S3BucketSetupResult { name: args.bucket_name, region: result.location })
     }
 
     async fn check_if_exists(&self, bucket_name: Self::CheckArgs) -> OrchestratorResult<bool> {

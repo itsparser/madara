@@ -60,7 +60,7 @@ impl AlertClient for SNS {
         Ok(self.get_topic_arn()?
             .split(":")
             .last()
-            .ok_or(AlertError::UnableToExtractTopicName)?
+            .ok_or(AlertError::UnableToExtractTopicName(self.get_topic_arn()?))?
             .to_string())
     }
 }
